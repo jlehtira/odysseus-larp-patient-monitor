@@ -13,11 +13,7 @@
 #include <string>
 #include <cmath>
 
-
-#ifdef PTHREAD
-#include <pthread.h>
-#endif
-
+// #include <pthread.h>
 #include <cassert>
 
 
@@ -213,13 +209,9 @@ void curve_append(float values[], int len, float val) {
     }
 }
 
-#ifdef PTHREAD
-void *read_thread(void *number){
-#else
+
 //void *read_thread(void *number){ // JL this worked with pthreads
 int read_thread(void *number){ // SDL
-#endif
-
     int i = *((int *)number);
     printf("Thread %d created!\n", i);
 
@@ -263,6 +255,7 @@ bool open_audio() {
 
     return true;
 }
+
 
 // /////////////////////////////////////////////////
 
@@ -373,11 +366,10 @@ int main( int argc, char* args[] )
 //    scl_data[100] = 0.0;
 //    scl_data[200] = 15.0;
 
-#ifdef PTHREAD
-    pthread_t threads[4];
 
-/* pthreads
     // Create the threads that will read values
+    int tid[4];
+/* pthreads
     pthread_t threads[4];
     for (int i=0; i<numdev; i++) {
         tid[i] = i;
@@ -385,18 +377,13 @@ int main( int argc, char* args[] )
         int res = pthread_create(&threads[tid[i]], NULL, read_thread, &tid[i]);
         assert (!res);
     }*/
-
-#else
-    // Create the threads that will read values
-    int tid[4];
 /* SDL Threads */
     SDL_Thread *threads[4];
     for (int i=0; i<numdev; i++) {
         tid[i] = i;
-        printf ("Creating thread %d\n",tid[i]);
         threads[i] = SDL_CreateThread(read_thread, "read_thread", &tid[i]);
     }
-#endif
+
 
     SDL_Event e;
     int frame = 0, disp;
@@ -507,24 +494,7 @@ int main( int argc, char* args[] )
         // Read from LightStone device(s)
 
         // TOTALLY MOVED TO DEDICATED THREADS !!!!!
-#ifndef PTHREAD
-        for (i=0; i<numdev; i++) {
-            ls[i] = lightstone_get_info(lsdev[i]);
 
-            if (ls[i].hrv < 0) {
-                printf("Error reading lightstone device %d!\n", i+1);
-    //            break;
-            }
-            ls[i].scl = clamp(ls[i].scl, 0.0, 10.0);
-            float sclmod, hrvmod;
-            ls[i].scl == 0 ? sclmod = 0 : sclmod = 10.0 * (10.0 - ls[i].scl);
-            hrvmod = 60.0 / clamp(ls[i].hrv, 0.3, 5.0);
-    //        if ((ls[i].hrv < 5.0) && (ls[i].hrv > 0.1)) {
-                curve_append(heart[i], MAX_DATALEN, hrvmod);
-                curve_append(scl[i], MAX_DATALEN, sclmod);
-    //        }
-        }
-#endif
 // Test noise
 //        curve_append(heart_data, MAX_DATALEN, 60 + 5*(frame%10) + (frame%3)*8 + ((frame>>3)%9)*2);
 //        curve_append(scl_data, MAX_DATALEN, 1.0 + float(frame%7)/3 + float((frame>>4)%19)/7);

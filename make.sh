@@ -1,7 +1,7 @@
 #!/bin/bash
 
-LIGHTSTONE_INC=../liblightstone-1.5/include
-LIGHTSTONE_LIB=../liblightstone-1.5/build/lib
+LIGHTSTONE_INC=./liblightstone-1.5/include
+LIGHTSTONE_LIB=./liblightstone-1.5/build/lib
 
 CFLAGS="-I $LIGHTSTONE_INC"
 LDFLAGS="-L $LIGHTSTONE_LIB -llightstone -lSDL2_ttf -lSDL2_gfx"
