@@ -1,0 +1,11 @@
+Compile liblightstone:
+
+> cd liblightstone-1.5/build/
+> cmake ..
+> make
+> cd ../..
+
+
+Compile Odysseus patient monitor:
+
+./make.sh

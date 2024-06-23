@@ -23,22 +23,27 @@
 int SCREEN_WIDTH = 1920; //640;
 int SCREEN_HEIGHT = 1080; //480;
 
-const int MAX_DATALEN = 5000;
+const int MAX_DATALEN = 5000;  // Odysseus 1: was 5000
 int PLOT_WIDTH = SCREEN_WIDTH / 2;
 int PLOT_HEIGHT = SCREEN_HEIGHT / 2;
 int PLOT_MARGIN = 20; // pixels
 
 int FONT_SIZE =500;
-int DATA_WIDTH = 10;
+int DATA_WIDTH = 4;    // How many milliseconds per pixel
 int LINE_WIDTH = 5;
 
 
-const float HR_MIN = 30;
-const float HR_MAX = 160;
+const float HR_MIN = 30;        // Odysseus 1: was 30 - 160
+const float HR_MAX = 200;
 
-const float SCL_MIN = 0;
-const float SCL_MAX = 100;
+const float SCL_MIN = 0;        // Odysseys 1; was 0 - 100
+const float SCL_MAX = 120;
 
+const char *RED_CURVENAME = "HEART";
+const char *BLUE_CURVENAME = "SkC";
+
+bool PLOT_BLUE = false;
+bool FILTER_BAD = true;
 
 bool AUDIO = true;
 SDL_AudioDeviceID AUDIOdev;
@@ -58,7 +63,7 @@ lightstone *lsdev[4];
 lightstone_info ls[4];
 int heartline[4] = { 0, 0, 0, 0 };
 float heart[4][MAX_DATALEN], scl[4][MAX_DATALEN];
-
+Uint64 readtick[4][MAX_DATALEN];   // When was this device last updated
 
 float clamp(float val, float minval, float maxval) {
     if (val < minval) val = minval;
@@ -66,7 +71,7 @@ float clamp(float val, float minval, float maxval) {
     return val;
 }
 
-void plot_curve_heart(SDL_Renderer *gRenderer, float values[], int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
+void plot_curve_heart(SDL_Renderer *gRenderer, float values[], Uint64 readtick[], int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
     int X0, Y0, W = SCREEN_WIDTH/2 - 3*PLOT_MARGIN, H = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
     if (quadrant == 0) {
         W = SCREEN_WIDTH - 2*PLOT_MARGIN;
@@ -101,15 +106,20 @@ void plot_curve_heart(SDL_Renderer *gRenderer, float values[], int quadrant = 0)
     } else {
         int x0, y0, x1, y1;
         float scl;
+        Uint64 drawtick = SDL_GetTicks64();
 
-        x0 = X0 + W;
+        x0 = X0 + W - (drawtick - readtick[0]) / DATA_WIDTH;
         y0 = Y0 + H - H*(clamp(values[0], HR_MIN, HR_MAX) / (HR_MAX - HR_MIN));
-        for (int i=1; i<W/DATA_WIDTH; i++) {
+//        for (int i=1; i<W/DATA_WIDTH; i++) {
+        for (int i=1; i<MAX_DATALEN; i++) {
             scl = clamp(values[i], HR_MIN, HR_MAX);
-            x1 = X0 + W - i*DATA_WIDTH;
+//            x1 = X0 + W - i*DATA_WIDTH;
+            x1 = X0 + W - (drawtick - readtick[i]) / DATA_WIDTH;
+
             y1 = Y0 + H - H*(scl / (HR_MAX - HR_MIN));
             thickLineRGBA(gRenderer, x0, y0, x1, y1, LINE_WIDTH, 0xFF, 0x33, 0x33, 0xFF);
             x0 = x1; y0 = y1;
+            if (x0 < X0) break;
         }
     }
 
@@ -208,6 +218,14 @@ void curve_append(float values[], int len, float val) {
         ins = temp;
     }
 }
+void curve_append(Uint64 values[], int len, Uint64 val) {
+    Uint64 temp, ins = val;
+    for (int i=0; i<len; i++) {
+        temp = values[i];
+        values[i] = ins;
+        ins = temp;
+    }
+}
 
 
 //void *read_thread(void *number){ // JL this worked with pthreads
@@ -227,7 +245,8 @@ int read_thread(void *number){ // SDL
         float sclmod, hrvmod;
         ls[i].scl == 0 ? sclmod = 0 : sclmod = 10.0 * (10.0 - ls[i].scl);
         hrvmod = 60.0 / clamp(ls[i].hrv, 0.3, 5.0);
-        if ((ls[i].hrv < 5.0) && (ls[i].hrv > 0.1)) { // This IF will filter out obviously bad values
+        if (((ls[i].hrv < 5.0) && (ls[i].hrv > 0.1)) || (!FILTER_BAD)) { // This IF will filter out obviously bad values
+            curve_append(readtick[i], MAX_DATALEN, SDL_GetTicks64());
             curve_append(heart[i], MAX_DATALEN, hrvmod);
             curve_append(scl[i], MAX_DATALEN, sclmod);
 
@@ -255,6 +274,9 @@ bool open_audio() {
 
     return true;
 }
+
+
+
 
 
 // /////////////////////////////////////////////////
@@ -339,18 +361,20 @@ int main( int argc, char* args[] )
 
 
     // Create titles
-    SDL_Color black = {0, 0, 0}, white = {255, 255, 255}, red = {0xCC, 0x33, 0x33}, blue = {0x33, 0x33, 0xCC};
+    SDL_Color black = {0, 0, 0}, white = {255, 255, 255}, red = {0xCC, 0x33, 0x33}, blue = {0x33, 0x66, 0xCC}; // Blue was 0x33, 0x33, 0xCC
     SDL_Surface *textSfc = TTF_RenderText_Solid (gFont, "ABC", white);
     SDL_Texture* textTex = SDL_CreateTextureFromSurface(gRenderer, textSfc);
 
     SDL_Surface *htitlesfc[4], *stitlesfc[4];
     SDL_Texture *htitletex[4], *stitletex[4];
 
+
+    // Set up SDL textures for titles
     for (i=0; i<numdev; i++) {
-        htitlesfc[i] = TTF_RenderText_Solid (gFont, "HEART", red);
+        htitlesfc[i] = TTF_RenderText_Solid (gFont, RED_CURVENAME, red);
         htitletex[i] = SDL_CreateTextureFromSurface(gRenderer, htitlesfc[i]);
 
-        stitlesfc[i] = TTF_RenderText_Solid (gFont, "VITALITY", blue);
+        stitlesfc[i] = TTF_RenderText_Solid (gFont, BLUE_CURVENAME, blue);
         stitletex[i] = SDL_CreateTextureFromSurface(gRenderer, stitlesfc[i]);
     }
 
@@ -389,22 +413,16 @@ int main( int argc, char* args[] )
     int frame = 0, disp;
     while (!quit) {
 
-
-//        SDL_FillRect( screenSurface, &dstRect, SDL_MapRGB( screenSurface->format, 0x00, 0xAA, 0x00 ) ); // Fill the surface
-//        SDL_BlitSurface(textSfc, NULL, screenSurface, &dstRect);
-//        SDL_UpdateWindowSurface( window );
-
         SDL_SetRenderDrawColor( gRenderer, 0x00, 0x00, 0x00, 0xFF );
         SDL_RenderClear(gRenderer);
 
         for (i=0; i<numdev; i++) {
-//        for (i=0; i<1; i++) {
             numdev > 1? disp = i+1 : disp = 0;
 
             plot_heart_alert(gRenderer, i, disp);
 
-            plot_curve_heart(gRenderer, heart[i], disp);
-            plot_curve_scl(gRenderer, scl[i], disp);
+            plot_curve_heart(gRenderer, heart[i], readtick[i], disp);                // Plot the red curve
+            if (PLOT_BLUE) plot_curve_scl(gRenderer, scl[i], disp);     // and blue curve
 
             int X0, Y0, W = SCREEN_WIDTH/2 - 3*PLOT_MARGIN, H = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
             if (i == 0) {
@@ -431,9 +449,10 @@ int main( int argc, char* args[] )
 
             SDL_Rect dstRect = { X0+10, Y0+10, W/3, H/3 };
             SDL_RenderCopy(gRenderer, htitletex[i], NULL, &dstRect);
-            dstRect = { X0+10, Y0+10+H/3, W/3, H/3 };
-            SDL_RenderCopy(gRenderer, stitletex[i], NULL, &dstRect);
-
+            if (PLOT_BLUE) {
+                dstRect = { X0+10, Y0+10+H/3, W/3, H/3 };
+                SDL_RenderCopy(gRenderer, stitletex[i], NULL, &dstRect);
+            }
 //            SDL_DestroyTexture(htitletex[i]);
 //            SDL_DestroyTexture(stitletex[i]);
 //            SDL_FreeSurface(htitlesfc[i]);
@@ -474,6 +493,14 @@ int main( int argc, char* args[] )
                 case SDLK_6:
                     if (AUDIO == true) AUDIO = false;
                     else AUDIO = true;
+                    break;
+
+                case SDLK_s:        // Toggle plotting the blue curve
+                    PLOT_BLUE = !PLOT_BLUE;
+                    break;
+
+                case SDLK_f:        // Toggle plotting the blue curve
+                    FILTER_BAD = !FILTER_BAD;
                     break;
 
                 case SDLK_1:
