@@ -63,7 +63,8 @@ lightstone *lsdev[4];
 lightstone_info ls[4];
 int heartline[4] = { 0, 0, 0, 0 };
 float heart[4][MAX_DATALEN], scl[4][MAX_DATALEN];
-Uint64 readtick[4][MAX_DATALEN];   // When was this device last updated
+Uint64 readtick[4][MAX_DATALEN];        // When was this device last updated
+int curve_index[4] = { 0, 0, 0, 0 };    // Where is the read/write pointer
 
 float clamp(float val, float minval, float maxval) {
     if (val < minval) val = minval;
@@ -71,7 +72,23 @@ float clamp(float val, float minval, float maxval) {
     return val;
 }
 
-void plot_curve_heart(SDL_Renderer *gRenderer, float values[], Uint64 readtick[], int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
+// Append a value to a buffer, treating it as a circular buffer
+template<typename valuetype>
+int curve_write(valuetype values[], int &index, int len, valuetype val) {
+    while (index >= len) index -= len;
+    while (index < 0) index += len;
+    values[index] = val;
+    return index;
+}
+// Read a value from a buffer, treating it as a circular buffer
+template<typename valuetype>
+valuetype curve_read(valuetype values[], int index, int len, int offset) {
+    int read_index = index - offset;
+    while (read_index < 0) read_index += len;
+    return values[read_index];
+}
+
+void plot_curve_heart(SDL_Renderer *gRenderer, float values[], Uint64 readtick[], int curve_index, int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
     int X0, Y0, W = SCREEN_WIDTH/2 - 3*PLOT_MARGIN, H = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
     if (quadrant == 0) {
         W = SCREEN_WIDTH - 2*PLOT_MARGIN;
@@ -108,13 +125,16 @@ void plot_curve_heart(SDL_Renderer *gRenderer, float values[], Uint64 readtick[]
         float scl;
         Uint64 drawtick = SDL_GetTicks64();
 
-        x0 = X0 + W - (drawtick - readtick[0]) / DATA_WIDTH;
-        y0 = Y0 + H - H*(clamp(values[0], HR_MIN, HR_MAX) / (HR_MAX - HR_MIN));
+//        x0 = X0 + W - (drawtick - readtick[0]) / DATA_WIDTH;
+        x0 = X0 + W - (drawtick - curve_read(readtick, curve_index, MAX_DATALEN, 0)) / DATA_WIDTH;
+//        y0 = Y0 + H - H*(clamp(values[0], HR_MIN, HR_MAX) / (HR_MAX - HR_MIN));
+        y0 = Y0 + H - H*(clamp(curve_read(values, curve_index, MAX_DATALEN, 0), HR_MIN, HR_MAX) / (HR_MAX - HR_MIN));
 //        for (int i=1; i<W/DATA_WIDTH; i++) {
-        for (int i=1; i<MAX_DATALEN; i++) {
-            scl = clamp(values[i], HR_MIN, HR_MAX);
+        for (int i=1; i<MAX_DATALEN-1; i++) {
+            scl = clamp(curve_read(values, curve_index, MAX_DATALEN, i), HR_MIN, HR_MAX);
 //            x1 = X0 + W - i*DATA_WIDTH;
-            x1 = X0 + W - (drawtick - readtick[i]) / DATA_WIDTH;
+//            x1 = X0 + W - (drawtick - readtick[i]) / DATA_WIDTH;
+            x1 = X0 + W - (drawtick - curve_read(readtick, curve_index, MAX_DATALEN, i)) / DATA_WIDTH;
 
             y1 = Y0 + H - H*(scl / (HR_MAX - HR_MIN));
             thickLineRGBA(gRenderer, x0, y0, x1, y1, LINE_WIDTH, 0xFF, 0x33, 0x33, 0xFF);
@@ -210,24 +230,6 @@ void plot_curve_scl(SDL_Renderer *gRenderer, float values[], int quadrant = 0) {
 
 
 
-void curve_append(float values[], int len, float val) {
-    float temp, ins = val;
-    for (int i=0; i<len; i++) {
-        temp = values[i];
-        values[i] = ins;
-        ins = temp;
-    }
-}
-void curve_append(Uint64 values[], int len, Uint64 val) {
-    Uint64 temp, ins = val;
-    for (int i=0; i<len; i++) {
-        temp = values[i];
-        values[i] = ins;
-        ins = temp;
-    }
-}
-
-
 //void *read_thread(void *number){ // JL this worked with pthreads
 int read_thread(void *number){ // SDL
     int i = *((int *)number);
@@ -246,9 +248,10 @@ int read_thread(void *number){ // SDL
         ls[i].scl == 0 ? sclmod = 0 : sclmod = 10.0 * (10.0 - ls[i].scl);
         hrvmod = 60.0 / clamp(ls[i].hrv, 0.3, 5.0);
         if (((ls[i].hrv < 5.0) && (ls[i].hrv > 0.1)) || (!FILTER_BAD)) { // This IF will filter out obviously bad values
-            curve_append(readtick[i], MAX_DATALEN, SDL_GetTicks64());
-            curve_append(heart[i], MAX_DATALEN, hrvmod);
-            curve_append(scl[i], MAX_DATALEN, sclmod);
+            curve_index[i]++;
+            curve_write(readtick[i], curve_index[i], MAX_DATALEN, SDL_GetTicks64());
+            curve_write(heart[i], curve_index[i], MAX_DATALEN, hrvmod);
+            curve_write(scl[i], curve_index[i], MAX_DATALEN, sclmod);
 
             if ((fabs(ls[i].hrv - 1) < 0.06) && (ls[i].scl != 0.0)) heartline[i]++;
             else heartline[i] = 0;
@@ -421,7 +424,7 @@ int main( int argc, char* args[] )
 
             plot_heart_alert(gRenderer, i, disp);
 
-            plot_curve_heart(gRenderer, heart[i], readtick[i], disp);                // Plot the red curve
+            plot_curve_heart(gRenderer, heart[i], readtick[i], curve_index[i], disp);                // Plot the red curve
             if (PLOT_BLUE) plot_curve_scl(gRenderer, scl[i], disp);     // and blue curve
 
             int X0, Y0, W = SCREEN_WIDTH/2 - 3*PLOT_MARGIN, H = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
