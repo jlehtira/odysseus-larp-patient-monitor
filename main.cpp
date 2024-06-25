@@ -34,7 +34,7 @@ int LINE_WIDTH = 5;
 
 
 const float HR_MIN = 30;        // Odysseus 1: was 30 - 160
-const float HR_MAX = 200;
+const float HR_MAX = 160;
 
 const float SCL_MIN = 0;        // Odysseys 1; was 0 - 100
 const float SCL_MAX = 120;
@@ -72,6 +72,7 @@ struct patient_data {
     float sclArr[MAX_DATALEN];
     Uint64 readtickArr[MAX_DATALEN];
     int index;
+    float heartConnected = 0.0, sclConnected = 0.0;
 
     inline int get_index(int offset) {
         int result = index - offset;
@@ -271,10 +272,21 @@ int read_thread(void *number){ // SDL
 //            curve_write(heart[i], curve_index[i], MAX_DATALEN, hrvmod);
 //            curve_write(scl[i], curve_index[i], MAX_DATALEN, sclmod);
 
+//            if (hrvmod > 100.0) hrvmod = 100.0 + (hrvmod - 100.0) * 0.2;
+            if (hrvmod > 100.0) hrvmod = 100.0 + log(hrvmod - 98.0) / log(1.4);
+
+            float k = 0.03;
+            if (fabs(hrvmod - 60.0) < 3.0) pdata[i].heartConnected = (1.0 - 0.01) * pdata[i].heartConnected;      // Tend toward zero
+            else pdata[i].heartConnected = k + (1.0 - k) * pdata[i].heartConnected;
+            if (fabs(sclmod) < 1) pdata[i].sclConnected = (1.0 - k) * pdata[i].sclConnected;               // Tend toward zero
+            else pdata[i].sclConnected = k + (1.0 - k) * pdata[i].sclConnected;
+
+
             pdata[i].index += 1;
             pdata[i].readtick(0) = SDL_GetTicks64();
-            pdata[i].heart(0) = hrvmod;
+            pdata[i].heart(0) = (pdata[i].heartConnected > 0.5) ? hrvmod : 60.0;
             pdata[i].scl(0) = sclmod;
+
 
             if ((fabs(ls[i].hrv - 1) < 0.06) && (ls[i].scl != 0.0)) heartline[i]++;
             else heartline[i] = 0;
@@ -393,7 +405,8 @@ int main( int argc, char* args[] )
 
     SDL_Surface *htitlesfc[4], *stitlesfc[4];
     SDL_Texture *htitletex[4], *stitletex[4];
-
+    SDL_Surface *numbersfc[4];      // For showing numerical output
+    SDL_Texture *numbertex[4];      //
 
     // Set up SDL textures for titles
     for (i=0; i<numdev; i++) {
@@ -451,9 +464,11 @@ int main( int argc, char* args[] )
             plot_curve_heart(gRenderer, pdata[i], disp);                // Plot the red curve
             if (PLOT_BLUE) plot_curve_scl(gRenderer, scl[i], disp);     // and blue curve
 
-            int X0, Y0, W = SCREEN_WIDTH/2 - 3*PLOT_MARGIN, H = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
+            int FULLSCREEN=0, X0, Y0, W = SCREEN_WIDTH/2 - 3*PLOT_MARGIN, H = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
             if (i == 0) {
                 X0 = Y0 = PLOT_MARGIN;
+                W = SCREEN_WIDTH - 2*PLOT_MARGIN; H = SCREEN_HEIGHT - 2*PLOT_MARGIN;
+                FULLSCREEN = 1;
             } else if (i == 1) {
                 X0 = SCREEN_WIDTH/2 + 2*PLOT_MARGIN;
                 Y0 = PLOT_MARGIN;
@@ -464,22 +479,26 @@ int main( int argc, char* args[] )
                 X0 = SCREEN_WIDTH/2 + 2*PLOT_MARGIN;
                 Y0 = SCREEN_HEIGHT/2 + 2*PLOT_MARGIN;
             }
-//            char htitle[80], stitle[80];
-//            sprintf(htitle, "HEART %.1f", heart[i][0]);
-//            sprintf(stitle, "VITALITY %.1f", scl[i][0]);
 
-//            htitlesfc[i] = TTF_RenderText_Solid (gFont, htitle, red);
-//            htitletex[i] = SDL_CreateTextureFromSurface(gRenderer, htitlesfc[i]);
-
-//            stitlesfc[i] = TTF_RenderText_Solid (gFont, stitle, blue);
-//            stitletex[i] = SDL_CreateTextureFromSurface(gRenderer, stitlesfc[i]);
-
-            SDL_Rect dstRect = { X0+10, Y0+10, W/3, H/3 };
+            // RENDER TEXT LABEL(S) FOR CURVES
+            SDL_Rect dstRect = { X0+10, Y0+10, W/(3*(FULLSCREEN+1)), H/(3*(FULLSCREEN+1)) };
             SDL_RenderCopy(gRenderer, htitletex[i], NULL, &dstRect);
             if (PLOT_BLUE) {
                 dstRect = { X0+10, Y0+10+H/3, W/3, H/3 };
                 SDL_RenderCopy(gRenderer, stitletex[i], NULL, &dstRect);
             }
+
+            // Also plot numerical output
+            char numbers[80];
+//            sprintf(numbers, "        \n%i\n%i", int(pdata[i].heart(0)), int(pdata[i].scl(0)));
+            sprintf(numbers, "        \n%i\n%i", int(pdata[i].heartConnected*100.0), int(pdata[i].sclConnected*100.0));
+            numbersfc[i] = TTF_RenderText_Solid_Wrapped (gFont, numbers, red, 0);
+            numbertex[i] = SDL_CreateTextureFromSurface(gRenderer, numbersfc[i]);
+            dstRect = { X0+W*3/4, Y0+H*2/3, W/5, H/3 };
+            SDL_RenderCopy(gRenderer, numbertex[i], NULL, &dstRect);
+            SDL_FreeSurface(numbersfc[i]);
+            SDL_DestroyTexture(numbertex[i]);
+
 //            SDL_DestroyTexture(htitletex[i]);
 //            SDL_DestroyTexture(stitletex[i]);
 //            SDL_FreeSurface(htitlesfc[i]);
