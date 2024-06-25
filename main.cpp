@@ -83,6 +83,7 @@ struct patient_data {
     float &heart(int offset) {        return heartArr[get_index(offset)];      }
     float &scl(int offset)   {        return sclArr[get_index(offset)];        }
     Uint64 &readtick(int offset) {    return readtickArr[get_index(offset)];   }
+    int connStatus() { return ((heartConnected > 0.5) ? 2 : 0) + ((sclConnected > 0.5) ? 1 : 0); }    // 3: both connected, 2: heart connected, 1: scl connected, 0: both disconnected
 };
 
 patient_data pdata[4];
@@ -186,15 +187,30 @@ void plot_heart_alert(SDL_Renderer *gRenderer, int idev, int quadrant = 0) {
         Y0 = SCREEN_HEIGHT/2 + 2*PLOT_MARGIN;
     }
 
-    if (heartline[idev] > 50) {
+//    if (heartline[idev] > 50) {
+    if (pdata[idev].connStatus() == 1) {
         SDL_Rect alertRect = { X0, Y0, W, H };
-        SDL_SetRenderDrawColor( gRenderer, alertphase, 0x00, 0x00, 0xFF );
+        int alertred = 40 + ((alertphase < 80) ? alertphase : 160 - alertphase);
+        SDL_SetRenderDrawColor( gRenderer, alertred, 0x00, 0x00, 0xFF );
         SDL_RenderFillRect(gRenderer, &alertRect);
 
         if (AUDIO && (beepcooldown == 0)) {
             SDL_QueueAudio(AUDIOdev, beepsound.buffer, beepsound.length);
             SDL_PauseAudioDevice(AUDIOdev, 0);
-            beepcooldown = 500;
+            beepcooldown = 300;
+        }
+    }
+
+    if (pdata[idev].connStatus() == 2) {
+        SDL_Rect alertRect = { X0, Y0, W, H };
+        int alertred = 40 + ((alertphase < 80) ? alertphase : 160 - alertphase);
+        SDL_SetRenderDrawColor( gRenderer, alertred & 0xFF, alertred / 2, 0x00, 0xFF );
+        SDL_RenderFillRect(gRenderer, &alertRect);
+
+        if (AUDIO && (beepcooldown == 0)) {
+            SDL_QueueAudio(AUDIOdev, beepsound.buffer, beepsound.length);
+            SDL_PauseAudioDevice(AUDIOdev, 0);
+            beepcooldown = 800;
         }
     }
 }
@@ -284,12 +300,16 @@ int read_thread(void *number){ // SDL
 
             pdata[i].index += 1;
             pdata[i].readtick(0) = SDL_GetTicks64();
-            pdata[i].heart(0) = (pdata[i].heartConnected > 0.5) ? hrvmod : 60.0;
+            if (pdata[i].connStatus() == 0) pdata[i].heart(0) = 60.5;
+            else if (pdata[i].connStatus() == 1) pdata[i].heart(0) = (hrvmod - 60.5) * 5.0 + 60.5;      // amplify
+            else if (pdata[i].connStatus() == 2) pdata[i].heart(0) = hrvmod;
+            else if (pdata[i].connStatus() == 3) pdata[i].heart(0) = hrvmod;
+//            pdata[i].heart(0) = (pdata[i].heartConnected > 0.5) ? hrvmod : (hrvmod - 60.5) * 5.0 + 60.5;    // If not connected, amplify
             pdata[i].scl(0) = sclmod;
 
 
-            if ((fabs(ls[i].hrv - 1) < 0.06) && (ls[i].scl != 0.0)) heartline[i]++;
-            else heartline[i] = 0;
+//            if ((fabs(ls[i].hrv - 1) < 0.06) && (ls[i].scl != 0.0)) heartline[i]++;
+//            else heartline[i] = 0;
         }
     }
     return 0;
@@ -450,6 +470,7 @@ int main( int argc, char* args[] )
 
     SDL_Event e;
     int frame = 0, disp;
+    int systolic[4] = { 0, 0, 0, 0 }, diastolic[4] = { 0, 0, 0, 0 };
     while (!quit) {
 
         SDL_SetRenderDrawColor( gRenderer, 0x00, 0x00, 0x00, 0xFF );
@@ -490,13 +511,22 @@ int main( int argc, char* args[] )
 
             // Also plot numerical output
             char numbers[80];
+            int textw, texth;
 //            sprintf(numbers, "        \n%i\n%i", int(pdata[i].heart(0)), int(pdata[i].scl(0)));
-            sprintf(numbers, "        \n%i\n%i", int(pdata[i].heartConnected*100.0), int(pdata[i].sclConnected*100.0));
-            numbersfc[i] = TTF_RenderText_Solid_Wrapped (gFont, numbers, red, 0);
+//            sprintf(numbers, "        \n%i\n%i", int(pdata[i].heartConnected*100.0), int(pdata[i].sclConnected*100.0));
+            if (frame % 70 == 0) {
+                if (pdata[i].connStatus() == 0) sprintf(numbers, " ");
+                if (pdata[i].connStatus() == 1) sprintf(numbers, "- / -");
+                if (pdata[i].connStatus() == 2) sprintf(numbers, "%i / %i", int(pdata[i].heart(0) + 5) % 10 + 70 + frame % 10, int(pdata[i].heart(0)) % 20 + 40);
+                if (pdata[i].connStatus() == 3) sprintf(numbers, "%i / %i", int(pdata[i].scl(0)) + 35 + frame % 10, int(pdata[i].scl(0)));
+            }
+//            sprintf(numbers, "%i / %i", 100 + int(pdata[i].heartConnected*100.0), 100 + int(pdata[i].sclConnected*100.0));
+            numbersfc[i] = TTF_RenderText_Solid (gFont, numbers, red);
             numbertex[i] = SDL_CreateTextureFromSurface(gRenderer, numbersfc[i]);
-            dstRect = { X0+W*3/4, Y0+H*2/3, W/5, H/3 };
-            SDL_RenderCopy(gRenderer, numbertex[i], NULL, &dstRect);
+            SDL_QueryTexture(numbertex[i], NULL, NULL, &textw, &texth);
             SDL_FreeSurface(numbersfc[i]);
+            dstRect = { X0+W*3/5, Y0+H*4/5, textw/5, texth/3 };
+            SDL_RenderCopy(gRenderer, numbertex[i], NULL, &dstRect);
             SDL_DestroyTexture(numbertex[i]);
 
 //            SDL_DestroyTexture(htitletex[i]);
