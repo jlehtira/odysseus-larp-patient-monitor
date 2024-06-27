@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string>
 #include <cmath>
+#include <vector>
 
 // #include <pthread.h>
 #include <cassert>
@@ -56,6 +57,25 @@ struct WAV {
 WAV beepsound, heartsound;
 int beepcooldown = 0;
 
+
+std::vector<std::vector<double>> sos = {
+    {0.02008337, 0.04016673, 0.02008337, 1.0, -1.59934348, 0.71529944},
+    {1.0, -2.0, 1.0, 1.0, -1.88321188, 0.89661966}
+};
+
+struct SOSState {
+    double w1 = 0.0, w2 = 0.0;  // Past input values
+};
+// SOSState SOSState_hrv;
+std::vector<SOSState> states(sos.size());
+
+double apply_sos_section(double input, const std::vector<double>& coeffs, SOSState& state) {
+    double w0 = input - coeffs[4] * state.w1 - coeffs[5] * state.w2;
+    double output = coeffs[0] * w0 + coeffs[1] * state.w1 + coeffs[2] * state.w2;
+    state.w2 = state.w1;
+    state.w1 = w0;
+    return output;
+}
 
 // GLOBAL VARIABLES because latest fashion, er, threads
 bool quit=false;
@@ -224,7 +244,8 @@ void plot_heart_alert(SDL_Renderer *gRenderer, int idev, int quadrant = 0) {
     }
 }
 
-void plot_curve_scl(SDL_Renderer *gRenderer, float values[], int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
+// void plot_curve_scl(SDL_Renderer *gRenderer, float values[], int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
+void plot_curve_scl(SDL_Renderer *gRenderer, patient_data &data, int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
     int X0, Y0, W = SCREEN_WIDTH/2 - 3*PLOT_MARGIN, H = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
     if (quadrant == 0) {
         W = SCREEN_WIDTH - 2*PLOT_MARGIN;
@@ -245,30 +266,45 @@ void plot_curve_scl(SDL_Renderer *gRenderer, float values[], int quadrant = 0) {
         Y0 = SCREEN_HEIGHT/2 + 2*PLOT_MARGIN;
     }
 
+    Uint64 drawtick = SDL_GetTicks64();
     if (LINE_WIDTH == 1) {
         SDL_Point curve[W];
         float scl;
         for (int i=0; i<W/DATA_WIDTH; i++) {
-            curve[i].x = X0 + W - i*DATA_WIDTH;
-            scl = clamp(values[i], SCL_MIN, SCL_MAX);
+            curve[i].x = X0 + W - (drawtick - data.readtick(i))*DATA_WIDTH;
+            scl = clamp(data.scl(i), SCL_MIN, SCL_MAX);
             curve[i].y = Y0 + H - H*(scl / (SCL_MAX - SCL_MIN));
-//        50*(i%10) + (i%3)*14 + ((i>>3)%9)*80;
         }
         SDL_SetRenderDrawColor( gRenderer, 0x33, 0x33, 0xCC, 0xFF );
         SDL_RenderDrawLines(gRenderer, curve, W/DATA_WIDTH);
+
     } else {
         int x0, y0, x1, y1;
         float scl;
 
-        x0 = X0 + W;
-        y0 = Y0 + H - H*(clamp(values[0], SCL_MIN, SCL_MAX) / (SCL_MAX - SCL_MIN));
-        for (int i=1; i<W/DATA_WIDTH; i++) {
-            scl = clamp(values[i], SCL_MIN, SCL_MAX);
-            x1 = X0 + W - i*DATA_WIDTH;
+        x0 = X0 + W - (drawtick - data.readtick(0)) / DATA_WIDTH;
+        y0 = Y0 + H - H*(clamp( data.heart(0), SCL_MIN, SCL_MAX) / (SCL_MAX - SCL_MIN));
+
+        for (int i=1; i<MAX_DATALEN-1; i++) {
+            scl = clamp(data.scl(i), SCL_MIN, SCL_MAX);
+            x1 = X0 + W - (drawtick - data.readtick(i)) / DATA_WIDTH;
+
             y1 = Y0 + H - H*(scl / (SCL_MAX - SCL_MIN));
-            thickLineRGBA(gRenderer, x0, y0, x1, y1, LINE_WIDTH, 0x33, 0x33, 0xCC, 0xFF);
+            if (CURVE_MODE == 0)
+                thickLineRGBA(gRenderer, x0, y0, x1, y1, LINE_WIDTH, 0x33, 0x33, 0xCC, 0xFF);
+            else if (CURVE_MODE == 1) {
+                SDL_SetRenderDrawColor( gRenderer, 0x33, 0x33, 0xCC, 0xFF );
+                for (int i=0; i<LINE_WIDTH; i++) {
+                    SDL_RenderDrawLine(gRenderer, x0, y0+i, x1, y1+i);
+                    SDL_RenderDrawLine(gRenderer, x0+i, y0, x1+i, y1);
+                }
+            }
             x0 = x1; y0 = y1;
+            if (x0 < X0) break;
         }
+
+
+
     }
 }
 
@@ -309,12 +345,21 @@ int read_thread(void *number){ // SDL
 
             pdata[i].index += 1;
             pdata[i].readtick(0) = SDL_GetTicks64();
+//            printf("%li ", pdata[i].readtick(0));
+
+            pdata[i].scl(0) = sclmod;
             if (pdata[i].connStatus() == 0) pdata[i].heart(0) = 60.5;
             else if (pdata[i].connStatus() == 1) pdata[i].heart(0) = (hrvmod - 60.5) * 5.0 + 60.5;      // amplify
             else if (pdata[i].connStatus() == 2) pdata[i].heart(0) = hrvmod;
-            else if (pdata[i].connStatus() == 3) pdata[i].heart(0) = hrvmod;
-//            pdata[i].heart(0) = (pdata[i].heartConnected > 0.5) ? hrvmod : (hrvmod - 60.5) * 5.0 + 60.5;    // If not connected, amplify
-            pdata[i].scl(0) = sclmod;
+            else if (pdata[i].connStatus() == 3) { //pdata[i].heart(0) = hrvmod;
+                double output = 60.0 / clamp(ls[i].hrv, 0.3, 5.0);
+//                hrvmod = apply_sos_section(hrvmod, sos, SOSState_hrv);
+                for (size_t i = 0; i < sos.size(); ++i) {
+                    output = apply_sos_section(output, sos[i], states[i]);
+                }
+                pdata[i].heart(0) = hrvmod;
+                pdata[i].scl(0) = float(output);
+            }
 
 
 //            if ((fabs(ls[i].hrv - 1) < 0.06) && (ls[i].scl != 0.0)) heartline[i]++;
@@ -492,7 +537,7 @@ int main( int argc, char* args[] )
 
 //            plot_curve_heart(gRenderer, heart[i], readtick[i], curve_index[i], disp);                // Plot the red curve
             plot_curve_heart(gRenderer, pdata[i], disp);                // Plot the red curve
-            if (PLOT_BLUE) plot_curve_scl(gRenderer, scl[i], disp);     // and blue curve
+            if (PLOT_BLUE) plot_curve_scl(gRenderer, pdata[i], disp);     // and blue curve
 
             int FULLSCREEN=0, X0, Y0, W = SCREEN_WIDTH/2 - 3*PLOT_MARGIN, H = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
             if (i == 0) {
