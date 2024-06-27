@@ -3,7 +3,7 @@
 LIGHTSTONE_INC=./liblightstone-1.5/include
 LIGHTSTONE_LIB=./liblightstone-1.5/build/lib
 
-CFLAGS="-I $LIGHTSTONE_INC"
+CFLAGS="-I $LIGHTSTONE_INC -g"
 LDFLAGS="-L $LIGHTSTONE_LIB -llightstone -lSDL2_ttf -lSDL2_gfx"
 
 g++ $(sdl2-config --cflags) -c main.cpp $CFLAGS -o main.o

@@ -31,7 +31,7 @@ int PLOT_MARGIN = 20; // pixels
 int FONT_SIZE =500;
 int DATA_WIDTH = 4;    // How many milliseconds per pixel
 int LINE_WIDTH = 5;
-
+int CURVE_MODE = 0;     // How to plot
 
 const float HR_MIN = 30;        // Odysseus 1: was 30 - 160
 const float HR_MAX = 160;
@@ -44,6 +44,7 @@ const char *BLUE_CURVENAME = "SkC";
 
 bool PLOT_BLUE = false;
 bool FILTER_BAD = true;
+bool PLOT_DIA_SYS = true;
 
 bool AUDIO = true;
 SDL_AudioDeviceID AUDIOdev;
@@ -77,7 +78,7 @@ struct patient_data {
     inline int get_index(int offset) {
         int result = index - offset;
         while (result < 0) result += MAX_DATALEN;
-        return result; // & MAX_DATALEN;
+        return result % MAX_DATALEN;
     }
 
     float &heart(int offset) {        return heartArr[get_index(offset)];      }
@@ -157,7 +158,15 @@ void plot_curve_heart(SDL_Renderer *gRenderer, patient_data &data, int quadrant 
             x1 = X0 + W - (drawtick - data.readtick(i)) / DATA_WIDTH;
 
             y1 = Y0 + H - H*(scl / (HR_MAX - HR_MIN));
-            thickLineRGBA(gRenderer, x0, y0, x1, y1, LINE_WIDTH, 0xFF, 0x33, 0x33, 0xFF);
+            if (CURVE_MODE == 0)
+                thickLineRGBA(gRenderer, x0, y0, x1, y1, LINE_WIDTH, 0xFF, 0x33, 0x33, 0xFF);
+            else if (CURVE_MODE == 1) {
+                SDL_SetRenderDrawColor( gRenderer, 0xCC, 0x33, 0x33, 0xFF );
+                for (int i=0; i<LINE_WIDTH; i++) {
+                    SDL_RenderDrawLine(gRenderer, x0, y0+i, x1, y1+i);
+                    SDL_RenderDrawLine(gRenderer, x0+i, y0, x1+i, y1);
+                }
+            }
             x0 = x1; y0 = y1;
             if (x0 < X0) break;
         }
@@ -509,26 +518,27 @@ int main( int argc, char* args[] )
                 SDL_RenderCopy(gRenderer, stitletex[i], NULL, &dstRect);
             }
 
-            // Also plot numerical output
-            char numbers[80];
-            int textw, texth;
+            if (PLOT_DIA_SYS) {
+                // Also plot numerical output
+                char numbers[80];
+                int textw, texth;
 //            sprintf(numbers, "        \n%i\n%i", int(pdata[i].heart(0)), int(pdata[i].scl(0)));
 //            sprintf(numbers, "        \n%i\n%i", int(pdata[i].heartConnected*100.0), int(pdata[i].sclConnected*100.0));
-            if (frame % 70 == 0) {
-                if (pdata[i].connStatus() == 0) sprintf(numbers, " ");
-                if (pdata[i].connStatus() == 1) sprintf(numbers, "- / -");
-                if (pdata[i].connStatus() == 2) sprintf(numbers, "%i / %i", int(pdata[i].heart(0) + 5) % 10 + 70 + frame % 10, int(pdata[i].heart(0)) % 20 + 40);
-                if (pdata[i].connStatus() == 3) sprintf(numbers, "%i / %i", int(pdata[i].scl(0)) + 35 + frame % 10, int(pdata[i].scl(0)));
-            }
+                if (frame % 70 == 0) {
+                    if (pdata[i].connStatus() == 0) sprintf(numbers, " ");
+                    if (pdata[i].connStatus() == 1) sprintf(numbers, "- / -");
+                    if (pdata[i].connStatus() == 2) sprintf(numbers, "%i / %i", int(pdata[i].heart(0) + 5) % 10 + 70 + frame % 10, int(pdata[i].heart(0)) % 20 + 40);
+                    if (pdata[i].connStatus() == 3) sprintf(numbers, "%i / %i", int(pdata[i].scl(0)) + 35 + frame % 10, int(pdata[i].scl(0)));
+                }
 //            sprintf(numbers, "%i / %i", 100 + int(pdata[i].heartConnected*100.0), 100 + int(pdata[i].sclConnected*100.0));
-            numbersfc[i] = TTF_RenderText_Solid (gFont, numbers, red);
-            numbertex[i] = SDL_CreateTextureFromSurface(gRenderer, numbersfc[i]);
-            SDL_QueryTexture(numbertex[i], NULL, NULL, &textw, &texth);
-            SDL_FreeSurface(numbersfc[i]);
-            dstRect = { X0+W*3/5, Y0+H*4/5, textw/5, texth/3 };
-            SDL_RenderCopy(gRenderer, numbertex[i], NULL, &dstRect);
-            SDL_DestroyTexture(numbertex[i]);
-
+                numbersfc[i] = TTF_RenderText_Solid (gFont, numbers, red);
+                numbertex[i] = SDL_CreateTextureFromSurface(gRenderer, numbersfc[i]);
+                SDL_QueryTexture(numbertex[i], NULL, NULL, &textw, &texth);
+                SDL_FreeSurface(numbersfc[i]);
+                dstRect = { X0+W*3/5, Y0+H*4/5, textw/5, texth/3 };
+                SDL_RenderCopy(gRenderer, numbertex[i], NULL, &dstRect);
+                SDL_DestroyTexture(numbertex[i]);
+            }
 //            SDL_DestroyTexture(htitletex[i]);
 //            SDL_DestroyTexture(stitletex[i]);
 //            SDL_FreeSurface(htitlesfc[i]);
@@ -579,6 +589,9 @@ int main( int argc, char* args[] )
                     FILTER_BAD = !FILTER_BAD;
                     break;
 
+                case SDLK_m:        // Switch curve plotting mode
+                    CURVE_MODE = (CURVE_MODE + 1) % 2;
+                    break;
                 case SDLK_1:
                     if (numdev >= 2) std::swap (lsdev[0], lsdev[1]);
                     break;
