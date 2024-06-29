@@ -35,7 +35,7 @@ int LINE_WIDTH = 5;
 int CURVE_MODE = 0;     // How to plot
 
 const float HR_MIN = 30;        // Odysseus 1: was 30 - 160
-const float HR_MAX = 160;
+const float HR_MAX = 460;
 
 const float SCL_MIN = 0;        // Odysseys 1; was 0 - 100
 const float SCL_MAX = 120;
@@ -57,11 +57,32 @@ struct WAV {
 WAV beepsound, heartsound;
 int beepcooldown = 0;
 
-
-std::vector<std::vector<double>> sos = {
+/*
+std::vector<std::vector<double>> sos = {    // 2nd order butterworth filter
     {0.02008337, 0.04016673, 0.02008337, 1.0, -1.59934348, 0.71529944},
     {1.0, -2.0, 1.0, 1.0, -1.88321188, 0.89661966}
+};*/
+
+/*
+std::vector<std::vector<double>> sos = {    // 3rd order elliptic filter
+    { 0.04966687,  0.,         -0.04966687,  1.,         -1.73794489,  0.77710116},
+    { 1.,         -1.6871129,   1.,          1.,         -1.72356976,  0.89911169},
+    { 1.,         -1.9941593,   1.,          1.,         -1.96469015,  0.97477867}
+};*/
+
+/*
+std::vector<std::vector<double>> sos = {    // 3rd order butterworth filter
+    {0.00289819, 0.00579639, 0.00289819, 1.00000000, -1.68850026, 0.72654253},
+    {1.00000000, 0.00000000, -1.00000000, 1.00000000, -1.64554221, 0.78455539},
+    {1.00000000, -2.00000000, 1.00000000, 1.00000000, -1.92164062, 0.93344451}
+};*/
+
+std::vector<std::vector<double>> sos = {    // 3rd order butterworth with band 0.5 - 1.5 (30 - 90 Hz)
+    {0.00094131, 0.00188263, 0.00094131, 1.00000000, -1.77998686, 0.80978403},
+    {1.00000000, 0.00000000, -1.00000000, 1.00000000, -1.77705266, 0.85912856},
+    {1.00000000, -2.00000000, 1.00000000, 1.00000000, -1.93291941, 0.94475576}
 };
+
 
 struct SOSState {
     double w1 = 0.0, w2 = 0.0;  // Past input values
@@ -87,11 +108,20 @@ float heart[4][MAX_DATALEN], scl[4][MAX_DATALEN];
 Uint64 readtick[4][MAX_DATALEN];        // When was this device last updated
 int curve_index[4] = { 0, 0, 0, 0 };    // Where is the read/write pointer
 
+struct cyclic_buffer {
+    float buf[MAX_DATALEN];
+    int index;
+    float max_plot, min_plot;
+};
+
 
 struct patient_data {
     float heartArr[MAX_DATALEN];
     float sclArr[MAX_DATALEN];
     Uint64 readtickArr[MAX_DATALEN];
+    float pulseArr[MAX_DATALEN];    // filtered to show pulse
+    float dpulseArr[MAX_DATALEN];   // 1st derivative of that
+
     int index;
     float heartConnected = 0.0, sclConnected = 0.0;
 
@@ -103,6 +133,8 @@ struct patient_data {
 
     float &heart(int offset) {        return heartArr[get_index(offset)];      }
     float &scl(int offset)   {        return sclArr[get_index(offset)];        }
+    float &pulse(int offset) {       return pulseArr[get_index(offset)];      }
+    float &dpulse(int offset) {       return dpulseArr[get_index(offset)];      }
     Uint64 &readtick(int offset) {    return readtickArr[get_index(offset)];   }
     int connStatus() { return ((heartConnected > 0.5) ? 2 : 0) + ((sclConnected > 0.5) ? 1 : 0); }    // 3: both connected, 2: heart connected, 1: scl connected, 0: both disconnected
 };
@@ -283,7 +315,7 @@ void plot_curve_scl(SDL_Renderer *gRenderer, patient_data &data, int quadrant = 
         float scl;
 
         x0 = X0 + W - (drawtick - data.readtick(0)) / DATA_WIDTH;
-        y0 = Y0 + H - H*(clamp( data.heart(0), SCL_MIN, SCL_MAX) / (SCL_MAX - SCL_MIN));
+        y0 = Y0 + H - H*(clamp( data.scl(0), SCL_MIN, SCL_MAX) / (SCL_MAX - SCL_MIN));
 
         for (int i=1; i<MAX_DATALEN-1; i++) {
             scl = clamp(data.scl(i), SCL_MIN, SCL_MAX);
@@ -302,9 +334,6 @@ void plot_curve_scl(SDL_Renderer *gRenderer, patient_data &data, int quadrant = 
             x0 = x1; y0 = y1;
             if (x0 < X0) break;
         }
-
-
-
     }
 }
 
@@ -326,7 +355,7 @@ int read_thread(void *number){ // SDL
         ls[i].scl = clamp(ls[i].scl, 0.0, 10.0);
         float sclmod, hrvmod;
         ls[i].scl == 0 ? sclmod = 0 : sclmod = 10.0 * (10.0 - ls[i].scl);
-        hrvmod = 60.0 / clamp(ls[i].hrv, 0.3, 5.0);
+        hrvmod = 60.0 / clamp(ls[i].hrv, 0.01, 5.0);
         if (((ls[i].hrv < 5.0) && (ls[i].hrv > 0.1)) || (!FILTER_BAD)) { // This IF will filter out obviously bad values
 //            curve_index[i]++;
 //            curve_write(readtick[i], curve_index[i], MAX_DATALEN, SDL_GetTicks64());
@@ -334,7 +363,8 @@ int read_thread(void *number){ // SDL
 //            curve_write(scl[i], curve_index[i], MAX_DATALEN, sclmod);
 
 //            if (hrvmod > 100.0) hrvmod = 100.0 + (hrvmod - 100.0) * 0.2;
-            if (hrvmod > 100.0) hrvmod = 100.0 + log(hrvmod - 98.0) / log(1.4);
+
+            if (hrvmod > 100.0) hrvmod = 100.0 + pow(hrvmod - 100, 0.9);   //log(hrvmod - 98.0) / log(1.0);
 
             float k = 0.03;
             if (fabs(hrvmod - 60.0) < 3.0) pdata[i].heartConnected = (1.0 - 0.01) * pdata[i].heartConnected;      // Tend toward zero
@@ -343,23 +373,24 @@ int read_thread(void *number){ // SDL
             else pdata[i].sclConnected = k + (1.0 - k) * pdata[i].sclConnected;
 
 
-            pdata[i].index += 1;
-            pdata[i].readtick(0) = SDL_GetTicks64();
+            pdata[i].readtick(-1) = SDL_GetTicks64();
 //            printf("%li ", pdata[i].readtick(0));
 
-            pdata[i].scl(0) = sclmod;
-            if (pdata[i].connStatus() == 0) pdata[i].heart(0) = 60.5;
-            else if (pdata[i].connStatus() == 1) pdata[i].heart(0) = (hrvmod - 60.5) * 5.0 + 60.5;      // amplify
-            else if (pdata[i].connStatus() == 2) pdata[i].heart(0) = hrvmod;
+            pdata[i].scl(-1) = sclmod;
+            if (pdata[i].connStatus() == 0) pdata[i].heart(-1) = 60.5;
+            else if (pdata[i].connStatus() == 1) pdata[i].heart(-1) = (hrvmod - 60.5) * 5.0 + 60.5;      // amplify
+            else if (pdata[i].connStatus() == 2) pdata[i].heart(-1) = hrvmod;
             else if (pdata[i].connStatus() == 3) { //pdata[i].heart(0) = hrvmod;
                 double output = 60.0 / clamp(ls[i].hrv, 0.3, 5.0);
 //                hrvmod = apply_sos_section(hrvmod, sos, SOSState_hrv);
                 for (size_t i = 0; i < sos.size(); ++i) {
                     output = apply_sos_section(output, sos[i], states[i]);
                 }
-                pdata[i].heart(0) = hrvmod;
-                pdata[i].scl(0) = float(output);
+                pdata[i].heart(-1) = hrvmod;
+                pdata[i].scl(-1) = float(output) + 50.0;
+//                if (output > pdata[i].scl(0) + 10.0) pdata[i].scl(-1) += 60;
             }
+            pdata[i].index += 1;
 
 
 //            if ((fabs(ls[i].hrv - 1) < 0.06) && (ls[i].scl != 0.0)) heartline[i]++;
@@ -559,7 +590,7 @@ int main( int argc, char* args[] )
             SDL_Rect dstRect = { X0+10, Y0+10, W/(3*(FULLSCREEN+1)), H/(3*(FULLSCREEN+1)) };
             SDL_RenderCopy(gRenderer, htitletex[i], NULL, &dstRect);
             if (PLOT_BLUE) {
-                dstRect = { X0+10, Y0+10+H/3, W/3, H/3 };
+                dstRect = { X0+10, Y0+10+H/(3*(FULLSCREEN+1)), W/(3*(FULLSCREEN+1)), H/(3*(FULLSCREEN+1)) };
                 SDL_RenderCopy(gRenderer, stitletex[i], NULL, &dstRect);
             }
 
