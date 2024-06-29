@@ -1,4 +1,3 @@
-
 #ifdef __cplusplus
     #include <cstdlib>
 #else
@@ -14,7 +13,6 @@
 #include <cmath>
 #include <vector>
 
-// #include <pthread.h>
 #include <cassert>
 
 
@@ -289,7 +287,6 @@ void plot_heart_alert(SDL_Renderer *gRenderer, int idev, int quadrant = 0) {
 
 
 
-//void *read_thread(void *number){ // JL this worked with pthreads
 int read_thread(void *number){ // SDL
     int i = *((int *)number);
     printf("Thread %d created!\n", i);
@@ -456,7 +453,7 @@ int main( int argc, char* args[] )
     SDL_Surface *htitlesfc[4], *stitlesfc[4];
     SDL_Texture *htitletex[4], *stitletex[4];
     SDL_Surface *numbersfc[4];      // For showing numerical output
-    SDL_Texture *numbertex[4];      //
+    SDL_Texture *numbertex[4] = { NULL, NULL, NULL, NULL };      //
 
     // Set up SDL textures for titles
     for (i=0; i<numdev; i++) {
@@ -465,32 +462,13 @@ int main( int argc, char* args[] )
 
         stitlesfc[i] = TTF_RenderText_Solid (gFont, BLUE_CURVENAME, blue);
         stitletex[i] = SDL_CreateTextureFromSurface(gRenderer, stitlesfc[i]);
+
+        SDL_FreeSurface(htitlesfc[i]);      // These not needed after creating textures
+        SDL_FreeSurface(stitlesfc[i]);      //
     }
 
-
-// Test noise
-//    float heart_data[MAX_DATALEN], scl_data[MAX_DATALEN], heart_1[MAX_DATALEN], scl_1[MAX_DATALEN];
-//    for (int i=0; i<MAX_DATALEN; i++) {
-//        heart_data[i] = 30 + 3*(i%10) + (i%3)*5 + ((i>>3)%9);
-//        scl_data[i] = 1.0 + float(i%7)/3 + float((i>>4)%19)/7;
-//    }
-//    heart_data[10] = 0.0;
-//    heart_data[11] = 110.0;
-//    scl_data[100] = 0.0;
-//    scl_data[200] = 15.0;
-
-
-    // Create the threads that will read values
+    // Create the SDL threads that will read values
     int tid[4];
-/* pthreads
-    pthread_t threads[4];
-    for (int i=0; i<numdev; i++) {
-        tid[i] = i;
-        printf ("Creating thread %d\n",tid[i]);
-        int res = pthread_create(&threads[tid[i]], NULL, read_thread, &tid[i]);
-        assert (!res);
-    }*/
-/* SDL Threads */
     SDL_Thread *threads[4];
     for (int i=0; i<numdev; i++) {
         tid[i] = i;
@@ -498,6 +476,7 @@ int main( int argc, char* args[] )
     }
 
 
+    // START MAIN LOOP
     SDL_Event e;
     int frame = 0, disp;
     int systolic[4] = { 0, 0, 0, 0 }, diastolic[4] = { 0, 0, 0, 0 };
@@ -542,8 +521,6 @@ int main( int argc, char* args[] )
                 // Also plot numerical output
                 char numbers[80];
                 int textw, texth;
-//            sprintf(numbers, "        \n%i\n%i", int(pdata[i].heart(0)), int(pdata[i].scl(0)));
-//            sprintf(numbers, "        \n%i\n%i", int(pdata[i].heartConnected*100.0), int(pdata[i].sclConnected*100.0));
                 if (frame % 70 == 0) {
                     if (pdata[i].connStatus() == 0) sprintf(numbers, " ");
                     if (pdata[i].connStatus() == 1) sprintf(numbers, "- / -");
@@ -551,20 +528,19 @@ int main( int argc, char* args[] )
                             int(pdata[i].value(patient_data::heart, 0) + 5) % 10 + 70 + frame % 10, int(pdata[i].value(patient_data::heart, 0)) % 20 + 40);
                     if (pdata[i].connStatus() == 3) sprintf(numbers, "%i / %i",
                             int(pdata[i].value(patient_data::scl, 0)) + 35 + frame % 10, int(pdata[i].value(patient_data::scl, 0)));
+
+                    // Update the texture
+                    if (NULL != numbertex[i]) SDL_DestroyTexture(numbertex[i]);
+                    numbersfc[i] = TTF_RenderText_Solid (gFont, numbers, red);
+                    numbertex[i] = SDL_CreateTextureFromSurface(gRenderer, numbersfc[i]);
+                    SDL_QueryTexture(numbertex[i], NULL, NULL, &textw, &texth);
+                    SDL_FreeSurface(numbersfc[i]);
+
                 }
 //            sprintf(numbers, "%i / %i", 100 + int(pdata[i].heartConnected*100.0), 100 + int(pdata[i].sclConnected*100.0));
-                numbersfc[i] = TTF_RenderText_Solid (gFont, numbers, red);
-                numbertex[i] = SDL_CreateTextureFromSurface(gRenderer, numbersfc[i]);
-                SDL_QueryTexture(numbertex[i], NULL, NULL, &textw, &texth);
-                SDL_FreeSurface(numbersfc[i]);
                 dstRect = { X0+W*3/5, Y0+H*4/5, textw/5, texth/3 };
                 SDL_RenderCopy(gRenderer, numbertex[i], NULL, &dstRect);
-                SDL_DestroyTexture(numbertex[i]);
             }
-//            SDL_DestroyTexture(htitletex[i]);
-//            SDL_DestroyTexture(stitletex[i]);
-//            SDL_FreeSurface(htitlesfc[i]);
-//            SDL_FreeSurface(stitlesfc[i]);
         }
 
         SDL_RenderPresent(gRenderer);
@@ -637,6 +613,9 @@ int main( int argc, char* args[] )
         if (++alertphase >160) alertphase = 0;
         if (beepcooldown > 0) beepcooldown--;
     }
+
+    SDL_DestroyTexture(htitletex[i]);   // Dunno if clearing needed but here is
+    SDL_DestroyTexture(stitletex[i]);
 
     if (gFont) TTF_CloseFont (gFont);
 	SDL_DestroyWindow( window );
