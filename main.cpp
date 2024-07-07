@@ -465,7 +465,7 @@ int main( int argc, char* args[] )
     }
 
     // Create the SDL threads that will read values
-    int tid[4];
+    int tid[4]; // to pass thread functions
     SDL_Thread *threads[4];
     for (int i=0; i<numdev; i++) {
         tid[i] = i;
@@ -485,14 +485,27 @@ int main( int argc, char* args[] )
         for (i=0; i<numdev; i++) {
             numdev > 1? disp = i+1 : disp = 0;
 
+            SDL_Rect tRect = getScreenQuadrant(screen, disp);
+            int W = tRect.w, H = tRect.h, X0 = tRect.x, Y0 = tRect.y;
+            int FULLSCREEN = (numdev <= 2) ? 1 : 0;  // TODO Check if this should be disp instead of i
+
+            if (lightstone_get_count(lsdev[0]) < numdev) {
+                // Then check which device is disconnected, and react
+//                SDL_Rect dstRect = { X0+40, Y0+40, W/(3*(FULLSCREEN+1)), H/(3*(FULLSCREEN+1)) };
+//                SDL_RenderCopy(gRenderer, htitletex[i], NULL, &dstRect);
+//                lightstone_close(lsdev[0]);
+//                numdev--;
+            }
+            if (lightstone_get_count(lsdev[0]) > numdev) {
+                // Then reconnect a device somewhere
+//                lightstone_open(lsdev[0], 0);
+            }
+
+
             plot_heart_alert(gRenderer, i, disp);
 
             plot_curve(gRenderer, pdata[i], patient_data::heart, red, disp);                // Plot the red curve
             if (PLOT_BLUE) plot_curve(gRenderer, pdata[i], patient_data::scl, blue, disp);     // and maybe the blue curve
-
-            SDL_Rect tRect = getScreenQuadrant(screen, disp);
-            int W = tRect.w, H = tRect.h, X0 = tRect.x, Y0 = tRect.y;
-            int FULLSCREEN = (i == 0) ? 1 : 0;  // TODO Check if this should be disp instead of i
 
             // RENDER TEXT LABEL(S) FOR CURVES
             SDL_Rect dstRect = { X0+10, Y0+10, W/(3*(FULLSCREEN+1)), H/(3*(FULLSCREEN+1)) };
@@ -518,15 +531,15 @@ int main( int argc, char* args[] )
                     if (NULL != numbertex[i]) SDL_DestroyTexture(numbertex[i]);
                     numbersfc[i] = TTF_RenderText_Solid (gFont, numbers, red);
                     numbertex[i] = SDL_CreateTextureFromSurface(gRenderer, numbersfc[i]);
-                    SDL_QueryTexture(numbertex[i], NULL, NULL, &textw, &texth);
                     SDL_FreeSurface(numbersfc[i]);
 
                 }
 //            sprintf(numbers, "%i / %i", 100 + int(pdata[i].heartConnected*100.0), 100 + int(pdata[i].sclConnected*100.0));
-                dstRect = { X0+W*3/5, Y0+H*4/5, textw/5, texth/3 };
+                SDL_QueryTexture(numbertex[i], NULL, NULL, &textw, &texth);
+                dstRect = { X0+W - (textw/texth)*H/7, Y0+H*6/7, (textw/texth)*H/7, H/7 };
                 SDL_RenderCopy(gRenderer, numbertex[i], NULL, &dstRect);
             }
-        }
+        } // loop over lightstone devices
 
         SDL_RenderPresent(gRenderer);
 
@@ -599,8 +612,10 @@ int main( int argc, char* args[] )
         if (beepcooldown > 0) beepcooldown--;
     }
 
-    SDL_DestroyTexture(htitletex[i]);   // Dunno if clearing needed but here is
-    SDL_DestroyTexture(stitletex[i]);
+    for (i=0; i<numdev; i++) {
+        SDL_DestroyTexture(htitletex[i]);   // Dunno if clearing needed but here is
+        SDL_DestroyTexture(stitletex[i]);
+    }
 
     if (gFont) TTF_CloseFont (gFont);
 	SDL_DestroyWindow( window );
