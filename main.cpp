@@ -23,8 +23,6 @@ int SCREEN_WIDTH = 1920; //640;
 int SCREEN_HEIGHT = 1080; //480;
 
 const int MAX_DATALEN = 5000;  // Odysseus 1: was 5000
-int PLOT_WIDTH = SCREEN_WIDTH / 2;
-int PLOT_HEIGHT = SCREEN_HEIGHT / 2;
 int PLOT_MARGIN = 20; // pixels
 
 int FONT_SIZE =500;
@@ -33,7 +31,7 @@ int LINE_WIDTH = 5;
 int CURVE_MODE = 0;     // How to plot
 
 const float HR_MIN = 30;        // Odysseus 1: was 30 - 160
-const float HR_MAX = 460;
+const float HR_MAX = 160;       // Testing up to 460
 
 const float SCL_MIN = 0;        // Odysseys 1; was 0 - 100
 const float SCL_MAX = 120;
@@ -105,7 +103,7 @@ lightstone_info ls[4];
 float heart[4][MAX_DATALEN], scl[4][MAX_DATALEN];
 Uint64 readtick[4][MAX_DATALEN];        // When was this device last updated
 int curve_index[4] = { 0, 0, 0, 0 };    // Where is the read/write pointer
-
+SDL_Rect screen;
 
 
 struct patient_data {
@@ -173,28 +171,44 @@ valuetype curve_read(valuetype values[], int index, int len, int offset) {
 }
 
 
+SDL_Rect getScreenQuadrant(SDL_Rect sRect, int quadrant = 0) {
+    SDL_Rect result;
+
+    if (quadrant == 0) {
+        result.w = SCREEN_WIDTH - 2*PLOT_MARGIN;
+        result.h = SCREEN_HEIGHT - 2*PLOT_MARGIN;
+        result.x = result.y = PLOT_MARGIN;
+    } else if (quadrant == 1) {
+        result.x = result.y = PLOT_MARGIN;
+        result.w = SCREEN_WIDTH/2 - 3*PLOT_MARGIN;
+        if (numdev == 2) result.h = SCREEN_HEIGHT - 2*PLOT_MARGIN;
+        else result.h = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
+    } else if (quadrant == 2) {
+        result.x = SCREEN_WIDTH/2 + 2*PLOT_MARGIN;
+        result.y = PLOT_MARGIN;
+        result.w = SCREEN_WIDTH/2 - 3*PLOT_MARGIN;
+        if (numdev == 2) result.h = SCREEN_HEIGHT - 2*PLOT_MARGIN;
+        else result.h = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
+    } else if (quadrant == 3) {
+        result.x = PLOT_MARGIN;
+        result.y = SCREEN_HEIGHT/2 + 2*PLOT_MARGIN;
+        result.w = SCREEN_WIDTH/2 - 3*PLOT_MARGIN;
+        result.h = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
+    } else if (quadrant == 4) {
+        result.x = SCREEN_WIDTH/2 + 2*PLOT_MARGIN;
+        result.y = SCREEN_HEIGHT/2 + 2*PLOT_MARGIN;
+        result.w = SCREEN_WIDTH/2 - 3*PLOT_MARGIN;
+        result.h = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
+    }
+    return result;
+}
+
+
 //void plot_curve_heart(SDL_Renderer *gRenderer, float values[], Uint64 readtick[], int curve_index, int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
 //void plot_curve_heart(SDL_Renderer *gRenderer, patient_data &data, int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
 void plot_curve(SDL_Renderer *gRenderer, patient_data &data, int var, SDL_Color color, int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
-    int X0, Y0, W = SCREEN_WIDTH/2 - 3*PLOT_MARGIN, H = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
-    if (quadrant == 0) {
-        W = SCREEN_WIDTH - 2*PLOT_MARGIN;
-        H = SCREEN_HEIGHT - 2*PLOT_MARGIN;
-        X0 = Y0 = PLOT_MARGIN;
-    } else if (quadrant == 1) {
-        X0 = Y0 = PLOT_MARGIN;
-        if (numdev == 2) H = SCREEN_HEIGHT - 2*PLOT_MARGIN;
-    } else if (quadrant == 2) {
-        X0 = SCREEN_WIDTH/2 + 2*PLOT_MARGIN;
-        Y0 = PLOT_MARGIN;
-        if (numdev == 2) H = SCREEN_HEIGHT - 2*PLOT_MARGIN;
-    } else if (quadrant == 3) {
-        X0 = PLOT_MARGIN;
-        Y0 = SCREEN_HEIGHT/2 + 2*PLOT_MARGIN;
-    } else if (quadrant == 4) {
-        X0 = SCREEN_WIDTH/2 + 2*PLOT_MARGIN;
-        Y0 = SCREEN_HEIGHT/2 + 2*PLOT_MARGIN;
-    }
+    SDL_Rect tRect = getScreenQuadrant(screen, quadrant);
+    int W = tRect.w, H = tRect.h, X0 = tRect.x, Y0 = tRect.y;
 
     Uint64 drawtick = SDL_GetTicks64();
     if (LINE_WIDTH == 1) {      // OUTDATED. TODO: remove or update to use curve_read as below //
@@ -237,25 +251,9 @@ void plot_curve(SDL_Renderer *gRenderer, patient_data &data, int var, SDL_Color 
 
 
 void plot_heart_alert(SDL_Renderer *gRenderer, int idev, int quadrant = 0) {
-    int X0, Y0, W = SCREEN_WIDTH/2 - 3*PLOT_MARGIN, H = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
-    if (quadrant == 0) {
-        W = SCREEN_WIDTH - 2*PLOT_MARGIN;
-        H = SCREEN_HEIGHT - 2*PLOT_MARGIN;
-        X0 = Y0 = PLOT_MARGIN;
-    } else if (quadrant == 1) {
-        X0 = Y0 = PLOT_MARGIN;
-        if (numdev == 2) H = SCREEN_HEIGHT - 2*PLOT_MARGIN;
-    } else if (quadrant == 2) {
-        X0 = SCREEN_WIDTH/2 + 2*PLOT_MARGIN;
-        Y0 = PLOT_MARGIN;
-        if (numdev == 2) H = SCREEN_HEIGHT - 2*PLOT_MARGIN;
-    } else if (quadrant == 3) {
-        X0 = PLOT_MARGIN;
-        Y0 = SCREEN_HEIGHT/2 + 2*PLOT_MARGIN;
-    } else if (quadrant == 4) {
-        X0 = SCREEN_WIDTH/2 + 2*PLOT_MARGIN;
-        Y0 = SCREEN_HEIGHT/2 + 2*PLOT_MARGIN;
-    }
+    SDL_Rect tRect = getScreenQuadrant(screen, quadrant);
+    int W = tRect.w, H = tRect.h, X0 = tRect.x, Y0 = tRect.y;
+
 
     if (pdata[idev].connStatus() == 1) {
         SDL_Rect alertRect = { X0, Y0, W, H };
@@ -303,7 +301,7 @@ int read_thread(void *number){ // SDL
         float sclmod, hrvmod;
         ls[i].scl == 0 ? sclmod = 0 : sclmod = 10.0 * (10.0 - ls[i].scl);
         hrvmod = 60.0 / clamp(ls[i].hrv, 0.01, 5.0);
-        if (((ls[i].hrv < 5.0) && (ls[i].hrv > 0.1)) || (!FILTER_BAD)) { // This IF will filter out obviously bad values
+        if (((ls[i].hrv < 5.0) && (ls[i].hrv > 0.01)) || (!FILTER_BAD)) { // This IF will filter out obviously bad values
 //            curve_index[i]++;
 //            curve_write(readtick[i], curve_index[i], MAX_DATALEN, SDL_GetTicks64());
 //            curve_write(heart[i], curve_index[i], MAX_DATALEN, hrvmod);
@@ -423,8 +421,7 @@ int main( int argc, char* args[] )
         quit = true;
     } else {
         SDL_GetWindowSize(window, &SCREEN_WIDTH, &SCREEN_HEIGHT);
-        PLOT_WIDTH = SCREEN_WIDTH / 2;
-        PLOT_HEIGHT = SCREEN_HEIGHT / 2;
+        screen = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT };
 // Renderer, not Surface (SDL2)
         gRenderer = SDL_CreateRenderer( window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC );
         if( gRenderer == NULL ) {
@@ -493,21 +490,9 @@ int main( int argc, char* args[] )
             plot_curve(gRenderer, pdata[i], patient_data::heart, red, disp);                // Plot the red curve
             if (PLOT_BLUE) plot_curve(gRenderer, pdata[i], patient_data::scl, blue, disp);     // and maybe the blue curve
 
-            int FULLSCREEN=0, X0, Y0, W = SCREEN_WIDTH/2 - 3*PLOT_MARGIN, H = SCREEN_HEIGHT/2 - 3*PLOT_MARGIN;
-            if (i == 0) {
-                X0 = Y0 = PLOT_MARGIN;
-                W = SCREEN_WIDTH - 2*PLOT_MARGIN; H = SCREEN_HEIGHT - 2*PLOT_MARGIN;
-                FULLSCREEN = 1;
-            } else if (i == 1) {
-                X0 = SCREEN_WIDTH/2 + 2*PLOT_MARGIN;
-                Y0 = PLOT_MARGIN;
-            } else if (i == 2) {
-                X0 = PLOT_MARGIN;
-                Y0 = SCREEN_HEIGHT/2 + 2*PLOT_MARGIN;
-            } else if (i == 3) {
-                X0 = SCREEN_WIDTH/2 + 2*PLOT_MARGIN;
-                Y0 = SCREEN_HEIGHT/2 + 2*PLOT_MARGIN;
-            }
+            SDL_Rect tRect = getScreenQuadrant(screen, disp);
+            int W = tRect.w, H = tRect.h, X0 = tRect.x, Y0 = tRect.y;
+            int FULLSCREEN = (i == 0) ? 1 : 0;  // TODO Check if this should be disp instead of i
 
             // RENDER TEXT LABEL(S) FOR CURVES
             SDL_Rect dstRect = { X0+10, Y0+10, W/(3*(FULLSCREEN+1)), H/(3*(FULLSCREEN+1)) };
