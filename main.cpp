@@ -12,11 +12,13 @@
 #include <string>
 #include <cmath>
 #include <vector>
+#include <deque>
 
 #include <cassert>
 
 
 #include "lightstone/lightstone.h"
+#include "iirfilter.h"
 
 //Screen dimension constants
 int SCREEN_WIDTH = 1920; //640;
@@ -30,8 +32,8 @@ int DATA_WIDTH = 4;    // How many milliseconds per pixel
 int LINE_WIDTH = 5;
 int CURVE_MODE = 0;     // How to plot
 
-const float HR_MIN = 30;        // Odysseus 1: was 30 - 160
-const float HR_MAX = 160;       // Testing up to 460
+const float HR_MIN = -140;        // Odysseus 1: was 0 - 160
+const float HR_MAX = 420;       // Testing up to 460
 
 const float SCL_MIN = 0;        // Odysseys 1; was 0 - 100
 const float SCL_MAX = 120;
@@ -42,6 +44,7 @@ const char *BLUE_CURVENAME = "SkC";
 bool PLOT_BLUE = false;
 bool FILTER_BAD = true;
 bool PLOT_DIA_SYS = true;
+bool PLOT_HR = true;
 
 bool AUDIO = true;
 SDL_AudioDeviceID AUDIOdev;
@@ -54,46 +57,11 @@ WAV beepsound, heartsound;
 int beepcooldown = 0;
 
 SDL_Color black = {0, 0, 0, 0xFF}, white = {255, 255, 255, 0xFF}, red = {0xCC, 0x33, 0x33, 0xFF}, blue = {0x33, 0x66, 0xCC, 0xFF}; // Blue was 0x33, 0x33, 0xCC
+SDL_Color green = {0, 0xCC, 0x66, 0xFF};
 
-/*
-std::vector<std::vector<double>> sos = {    // 2nd order butterworth filter
-    {0.02008337, 0.04016673, 0.02008337, 1.0, -1.59934348, 0.71529944},
-    {1.0, -2.0, 1.0, 1.0, -1.88321188, 0.89661966}
-};*/
-
-/*
-std::vector<std::vector<double>> sos = {    // 3rd order elliptic filter
-    { 0.04966687,  0.,         -0.04966687,  1.,         -1.73794489,  0.77710116},
-    { 1.,         -1.6871129,   1.,          1.,         -1.72356976,  0.89911169},
-    { 1.,         -1.9941593,   1.,          1.,         -1.96469015,  0.97477867}
-};*/
-
-/*
-std::vector<std::vector<double>> sos = {    // 3rd order butterworth filter
-    {0.00289819, 0.00579639, 0.00289819, 1.00000000, -1.68850026, 0.72654253},
-    {1.00000000, 0.00000000, -1.00000000, 1.00000000, -1.64554221, 0.78455539},
-    {1.00000000, -2.00000000, 1.00000000, 1.00000000, -1.92164062, 0.93344451}
-};*/
-
-std::vector<std::vector<double>> sos = {    // 3rd order butterworth with band 0.5 - 1.5 (30 - 90 Hz)
-    {0.00094131, 0.00188263, 0.00094131, 1.00000000, -1.77998686, 0.80978403},
-    {1.00000000, 0.00000000, -1.00000000, 1.00000000, -1.77705266, 0.85912856},
-    {1.00000000, -2.00000000, 1.00000000, 1.00000000, -1.93291941, 0.94475576}
-};
-
-
-struct SOSState {
-    double w1 = 0.0, w2 = 0.0;  // Past input values
-};
+// This for IIR filtering of the signal, see iirfilter.h
 std::vector<SOSState> states(sos.size());
 
-double apply_sos_section(double input, const std::vector<double>& coeffs, SOSState& state) {
-    double w0 = input - coeffs[4] * state.w1 - coeffs[5] * state.w2;
-    double output = coeffs[0] * w0 + coeffs[1] * state.w1 + coeffs[2] * state.w2;
-    state.w2 = state.w1;
-    state.w1 = w0;
-    return output;
-}
 
 // GLOBAL VARIABLES because latest fashion, er, threads
 bool quit=false;
@@ -109,6 +77,8 @@ SDL_Rect screen;
 struct patient_data {
     static const int heart = 1;
     static const int scl = 2;
+    static const int pulse = 10;
+    static const int dpulse = 11;
 
     float heartArr[MAX_DATALEN];
     float sclArr[MAX_DATALEN];
@@ -118,6 +88,9 @@ struct patient_data {
 
     int index;
     float heartConnected = 0.0, sclConnected = 0.0;
+
+    std::deque<Uint64> pulseTicks, hrQueue;
+    float heartRate;
 
     inline int get_index(int offset) {
         int result = index - offset;
@@ -130,16 +103,20 @@ struct patient_data {
     float &value(int var, int offset) {
         if (var == heart) return heartArr[get_index(offset)];
         if (var == scl) return sclArr[get_index(offset)];
+        if (var == pulse) return pulseArr[get_index(offset)];
+        if (var == dpulse) return dpulseArr[get_index(offset)];
         else return heartArr[get_index(offset)];        // Maybe sensible as default?!?
     }
 
     float max(int var) {
         if (var == heart) return HR_MAX;
-        if (var == scl) return SCL_MAX;
+        else if (var == scl) return SCL_MAX;
+        else return 100.0;
     }
     float min(int var) {
         if (var == heart) return HR_MIN;
-        if (var == scl) return SCL_MIN;
+        else if (var == scl) return SCL_MIN;
+        else return -100.0;
     }
 
     int connStatus() { return ((heartConnected > 0.5) ? 2 : 0) + ((sclConnected > 0.5) ? 1 : 0); }    // 3: both connected, 2: heart connected, 1: scl connected, 0: both disconnected
@@ -203,6 +180,13 @@ SDL_Rect getScreenQuadrant(SDL_Rect sRect, int quadrant = 0) {
     return result;
 }
 
+SDL_Rect getStripe(SDL_Rect sRect, int beginning, int end, int total)
+{
+    int stripeH = sRect.h / total;
+    SDL_Rect result = { sRect.x, sRect.y + beginning*stripeH, sRect.w, stripeH * (end - beginning) };
+    return result;
+}
+
 
 //void plot_curve_heart(SDL_Renderer *gRenderer, float values[], Uint64 readtick[], int curve_index, int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
 //void plot_curve_heart(SDL_Renderer *gRenderer, patient_data &data, int quadrant = 0) { // 0: whole screen, 1 - 4 quadrants
@@ -223,16 +207,16 @@ void plot_curve(SDL_Renderer *gRenderer, patient_data &data, int var, SDL_Color 
         SDL_RenderDrawLines(gRenderer, curve, W/DATA_WIDTH);
     } else {
         int x0, y0, x1, y1;
-        float scl;
+        float value, vspread = data.max(var) - data.min(var);
 
         x0 = X0 + W - (drawtick - data.readtick(0)) / DATA_WIDTH;
-        y0 = Y0 + H - H*(clamp( data.value(var, 0), data.min(var), data.max(var)) / (data.max(var) - data.min(var)));
+        y0 = Y0 + H - H*(clamp(data.value(var, 0),data.min(var),data.max(var)) - data.min(var)) / vspread;
 
         for (int i=1; i<MAX_DATALEN-1; i++) {
-            scl = clamp(data.value(var, i), data.min(var), data.max(var));
+            value = clamp(data.value(var, i), data.min(var), data.max(var));
             x1 = X0 + W - (drawtick - data.readtick(i)) / DATA_WIDTH;
 
-            y1 = Y0 + H - H*(scl / (data.max(var) - data.min(var)));
+            y1 = Y0 + H - H*((value - data.min(var))/ vspread);
             if (CURVE_MODE == 0)
                 thickLineRGBA(gRenderer, x0, y0, x1, y1, LINE_WIDTH, color.r, color.g, color.b, color.a);
             else if (CURVE_MODE == 1) {
@@ -309,7 +293,7 @@ int read_thread(void *number){ // SDL
 
 //            if (hrvmod > 100.0) hrvmod = 100.0 + (hrvmod - 100.0) * 0.2;
 
-            if (hrvmod > 100.0) hrvmod = 100.0 + pow(hrvmod - 100, 0.9);   //log(hrvmod - 98.0) / log(1.0);
+//            if (hrvmod > 100.0) hrvmod = 100.0 + pow(hrvmod - 100, 0.9);   //log(hrvmod - 98.0) / log(1.0);
 
             float k = 0.03;
             if (fabs(hrvmod - 60.0) < 3.0) pdata[i].heartConnected = (1.0 - 0.01) * pdata[i].heartConnected;      // Tend toward zero
@@ -325,14 +309,40 @@ int read_thread(void *number){ // SDL
             if (pdata[i].connStatus() == 0) pdata[i].value(patient_data::heart, -1) = 60.5;
             else if (pdata[i].connStatus() == 1) pdata[i].value(patient_data::heart, -1) = (hrvmod - 60.5) * 5.0 + 60.5;      // amplify
             else if (pdata[i].connStatus() == 2) pdata[i].value(patient_data::heart, -1) = hrvmod;
-            else if (pdata[i].connStatus() == 3) { //pdata[i].heart(0) = hrvmod;
-                double output = 60.0 / clamp(ls[i].hrv, 0.3, 5.0);
+            else if (pdata[i].connStatus() == 3) pdata[i].value(patient_data::heart, -1) = hrvmod;
+
+            if (pdata[i].connStatus() > 1) {
+                double dpulse, output = 60.0 / clamp(ls[i].hrv, 0.3, 5.0);
 //                hrvmod = apply_sos_section(hrvmod, sos, SOSState_hrv);
                 for (size_t i = 0; i < sos.size(); ++i) {
                     output = apply_sos_section(output, sos[i], states[i]);
                 }
+                pdata[i].value(patient_data::pulse, -1) = float(output);
+                dpulse = pdata[i].value(patient_data::pulse, -1) - pdata[i].value(patient_data::pulse, 0);
+                pdata[i].value(patient_data::dpulse, -1) = dpulse;
+
                 pdata[i].value(patient_data::heart, -1) = hrvmod;
-                pdata[i].value(patient_data::scl, -1) = float(output) + 50.0;
+                pdata[i].value(patient_data::scl, -1) = sclmod;
+
+                if ((pdata[i].value(patient_data::dpulse, 0) * dpulse < 0)
+                    && (pdata[i].value(patient_data::pulse, -1) < 0.0)) {
+
+                    if (pdata[i].pulseTicks.size() > 0) {
+                        pdata[i].hrQueue.push_back(60000.0 / float(pdata[i].readtick(-1) - pdata[i].pulseTicks.back()));
+                        if (pdata[i].hrQueue.size() > 10) pdata[i].hrQueue.pop_front();
+                        float hrSum = 0.0;
+                        for (auto qi = pdata[i].hrQueue.begin(); qi != pdata[i].hrQueue.end(); qi++) {
+                            hrSum += *qi;
+                        }
+//                        pdata[i].heartRate = pdata[i].hrQueue.back();
+                        pdata[i].heartRate = hrSum / (pdata[i].hrQueue.size());
+                        while (pdata[i].heartRate > 200.0) pdata[i].heartRate -= 100.0; 
+                   }
+
+                    pdata[i].pulseTicks.push_back(pdata[i].readtick(-1));
+                    if (pdata[i].pulseTicks.size() > 10) pdata[i].pulseTicks.pop_front();
+                }
+
 //                if (output > pdata[i].scl(0) + 10.0) pdata[i].scl(-1) += 60;
             }
             pdata[i].index += 1;
@@ -447,8 +457,8 @@ int main( int argc, char* args[] )
     SDL_Surface *textSfc = TTF_RenderText_Solid (gFont, "ABC", white);
     SDL_Texture* textTex = SDL_CreateTextureFromSurface(gRenderer, textSfc);
 
-    SDL_Surface *htitlesfc[4], *stitlesfc[4];
-    SDL_Texture *htitletex[4], *stitletex[4];
+    SDL_Surface *htitlesfc[4], *stitlesfc[4], *hrsfc[4];
+    SDL_Texture *htitletex[4], *stitletex[4], *hrtex[4] = {NULL, NULL, NULL, NULL};
     SDL_Surface *numbersfc[4];      // For showing numerical output
     SDL_Texture *numbertex[4] = { NULL, NULL, NULL, NULL };      //
 
@@ -477,6 +487,7 @@ int main( int argc, char* args[] )
     SDL_Event e;
     int frame = 0, disp;
     int systolic[4] = { 0, 0, 0, 0 }, diastolic[4] = { 0, 0, 0, 0 };
+    int textw, texth;   // TEMPORARY
     while (!quit) {
 
         SDL_SetRenderDrawColor( gRenderer, 0x00, 0x00, 0x00, 0xFF );
@@ -506,6 +517,8 @@ int main( int argc, char* args[] )
 
             plot_curve(gRenderer, pdata[i], patient_data::heart, red, disp);                // Plot the red curve
             if (PLOT_BLUE) plot_curve(gRenderer, pdata[i], patient_data::scl, blue, disp);     // and maybe the blue curve
+            if (PLOT_BLUE) plot_curve(gRenderer, pdata[i], patient_data::pulse, green, disp);     // and maybe the blue curve
+            if (PLOT_BLUE) plot_curve(gRenderer, pdata[i], patient_data::dpulse, white, disp);     // and maybe the blue curve
 
             // RENDER TEXT LABEL(S) FOR CURVES
             SDL_Rect dstRect = { X0+10, Y0+10, W/(3*(FULLSCREEN+1)), H/(3*(FULLSCREEN+1)) };
@@ -515,10 +528,29 @@ int main( int argc, char* args[] )
                 SDL_RenderCopy(gRenderer, stitletex[i], NULL, &dstRect);
             }
 
+            if (PLOT_HR) {
+                char hrnumbers[4][80];
+                if (frame % 70 == 0) {
+                    if (pdata[i].connStatus() == 0) sprintf(hrnumbers[i], " ");
+                    if (pdata[i].connStatus() == 1) sprintf(hrnumbers[i], "--");
+                    if (pdata[i].connStatus() == 2) sprintf(hrnumbers[i], "%i", int(pdata[i].heartRate));
+                    if (pdata[i].connStatus() == 3) sprintf(hrnumbers[i], "%i", int(pdata[i].heartRate));
+
+                    // Update the texture
+                    if (NULL != hrtex[i]) SDL_DestroyTexture(hrtex[i]);
+                    hrsfc[i] = TTF_RenderText_Solid (gFont, hrnumbers[i], red);
+                    hrtex[i] = SDL_CreateTextureFromSurface(gRenderer, hrsfc[i]);
+                    SDL_FreeSurface(hrsfc[i]);
+
+                }
+                SDL_QueryTexture(hrtex[i], NULL, NULL, &textw, &texth);
+                dstRect = { X0+W - (textw/texth)*H/7, Y0+H*0/7, (textw/texth)*H/7, H/7 };
+                SDL_RenderCopy(gRenderer, hrtex[i], NULL, &dstRect);
+            }
+
             if (PLOT_DIA_SYS) {
                 // Also plot numerical output
                 char numbers[80];
-                int textw, texth;
                 if (frame % 70 == 0) {
                     if (pdata[i].connStatus() == 0) sprintf(numbers, " ");
                     if (pdata[i].connStatus() == 1) sprintf(numbers, "- / -");
