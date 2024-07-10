@@ -12,6 +12,6 @@ mkdir $DIR/liblightstone-1.5/build
 git -C $DIR/liblightstone-1.5 clone https://github.com/qdot/compily_buildd.git
 
 
-cp main.cpp make.sh INSTALL README 50-wilddivine-rules *.wav *.ttf $DIR
+cp *.cpp *.h make.sh INSTALL README 50-wilddivine-rules *.wav *.ttf $DIR
 
 tar cvfz ${DIR}.tar.gz $DIR

@@ -32,8 +32,10 @@ int DATA_WIDTH = 4;    // How many milliseconds per pixel
 int LINE_WIDTH = 5;
 int CURVE_MODE = 0;     // How to plot
 
-const float HR_MIN = -140;        // Odysseus 1: was 0 - 160
-const float HR_MAX = 420;       // Testing up to 460
+//const float HR_MIN = -140;        // Odysseus 1: was 0 - 160
+//const float HR_MAX = 420;       // Testing up to 460
+const float HR_MIN = -70;        //
+const float HR_MAX = 230;       //
 
 const float SCL_MIN = 0;        // Odysseys 1; was 0 - 100
 const float SCL_MAX = 120;
@@ -336,7 +338,7 @@ int read_thread(void *number){ // SDL
                         }
 //                        pdata[i].heartRate = pdata[i].hrQueue.back();
                         pdata[i].heartRate = hrSum / (pdata[i].hrQueue.size());
-                        while (pdata[i].heartRate > 200.0) pdata[i].heartRate -= 100.0; 
+                        while (pdata[i].heartRate > 150.0) pdata[i].heartRate -= 50.0;
                    }
 
                     pdata[i].pulseTicks.push_back(pdata[i].readtick(-1));
@@ -544,20 +546,20 @@ int main( int argc, char* args[] )
 
                 }
                 SDL_QueryTexture(hrtex[i], NULL, NULL, &textw, &texth);
-                dstRect = { X0+W - (textw/texth)*H/7, Y0+H*0/7, (textw/texth)*H/7, H/7 };
+                dstRect = { X0+W - (textw/texth)*H/6, Y0+H*0/6, (textw/texth)*H/6, H/6 };
                 SDL_RenderCopy(gRenderer, hrtex[i], NULL, &dstRect);
             }
 
             if (PLOT_DIA_SYS) {
                 // Also plot numerical output
                 char numbers[80];
-                if (frame % 70 == 0) {
+                if (frame % 71 == 0) {
                     if (pdata[i].connStatus() == 0) sprintf(numbers, " ");
                     if (pdata[i].connStatus() == 1) sprintf(numbers, "- / -");
                     if (pdata[i].connStatus() == 2) sprintf(numbers, "%i / %i",
-                            int(pdata[i].value(patient_data::heart, 0) + 5) % 10 + 70 + frame % 10, int(pdata[i].value(patient_data::heart, 0)) % 20 + 40);
+                            int(pdata[i].value(patient_data::heart, 0) + 5) % 10 + 75 + frame % 17, int(pdata[i].value(patient_data::heart, 0)) % 20 + 40);
                     if (pdata[i].connStatus() == 3) sprintf(numbers, "%i / %i",
-                            int(pdata[i].value(patient_data::scl, 0)) + 35 + frame % 10, int(pdata[i].value(patient_data::scl, 0)));
+                            int(pdata[i].value(patient_data::scl, 0)) + 43 + frame % 5, int(pdata[i].value(patient_data::scl, 0)));
 
                     // Update the texture
                     if (NULL != numbertex[i]) SDL_DestroyTexture(numbertex[i]);
@@ -568,7 +570,7 @@ int main( int argc, char* args[] )
                 }
 //            sprintf(numbers, "%i / %i", 100 + int(pdata[i].heartConnected*100.0), 100 + int(pdata[i].sclConnected*100.0));
                 SDL_QueryTexture(numbertex[i], NULL, NULL, &textw, &texth);
-                dstRect = { X0+W - (textw/texth)*H/7, Y0+H*6/7, (textw/texth)*H/7, H/7 };
+                dstRect = { X0+W - (textw/texth)*H/6, Y0+H*5/6, (textw/texth)*H/6, H/6 };
                 SDL_RenderCopy(gRenderer, numbertex[i], NULL, &dstRect);
             }
         } // loop over lightstone devices
