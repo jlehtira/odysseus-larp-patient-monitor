@@ -2,6 +2,7 @@
 # And the UDEV system needs to be reloaded with
 #
 # $ sudo udevadm control --reload 
+# $ sudo udevadm trigger
 
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="14fa", ATTRS{idProduct}=="0001", GROUP="users", MODE="0666"
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="0035", GROUP="users", MODE="0666"

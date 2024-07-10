@@ -9,3 +9,10 @@ Compile liblightstone:
 Compile Odysseus patient monitor:
 
 ./make.sh
+
+
+Add the device to udev and reload
+
+sudo cp 50-wilddivine.rules /etc/udev/rules.d/
+sudo udevadm control --reload 
+sudo udevadm trigger
