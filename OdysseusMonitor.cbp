@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="OdysseusMonitor" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug">
+				<Option output="bin/Debug/OdysseusMonitor" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+				</Compiler>
+			</Target>
+			<Target title="Release">
+				<Option output="bin/Release/OdysseusMonitor" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option use_console_runner="0" />
+				<Compiler>
+					<Add option="-O2" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add option="-std=gnu++17" />
+			<Add option="-m64" />
+			<Add directory="C:/Cloud/AsusWebStorage/Development/liblightstone-1.5/include" />
+			<Add directory="C:/Development/SDL2/SDL2-2.30.4/x86_64-w64-mingw32/include" />
+			<Add directory="C:/Development/SDL2/SDL2_image-2.8.2/x86_64-w64-mingw32/include" />
+			<Add directory="C:/Development/SDL2/SDL2_ttf-2.22.0/x86_64-w64-mingw32/include" />
+		</Compiler>
+		<Linker>
+			<Add option="-m64" />
+			<Add option="-lmingw32 -lSDL2main -lSDL2 -lSDL2_ttf -llightstone -lhid -lusb-1.0 -lSetupAPI" />
+			<Add directory="C:/Cloud/AsusWebStorage/Development/liblightstone-1.5/liblightstone/bin/Release" />
+			<Add directory="C:/Cloud/AsusWebStorage/Development/libusb-1.0.22/MinGW64/static" />
+			<Add directory="C:/Development/SDL2/SDL2-2.30.4/x86_64-w64-mingw32/lib" />
+			<Add directory="C:/Development/SDL2/SDL2_image-2.8.2/x86_64-w64-mingw32/lib" />
+			<Add directory="C:/Development/SDL2/SDL2_ttf-2.22.0/x86_64-w64-mingw32/lib" />
+			<Add directory="C:/Development/SDL2/SDL2-2.30.4/x86_64-w64-mingw32/bin" />
+		</Linker>
+		<Unit filename="cb.bmp" />
+		<Unit filename="main.cpp" />
+		<Extensions>
+			<lib_finder disable_auto="1" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>
