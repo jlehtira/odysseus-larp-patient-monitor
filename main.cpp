@@ -426,7 +426,7 @@ int main( int argc, char* args[] )
 
 
     //Create window
-    window = SDL_CreateWindow( "SDL Tutorial", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP );
+    window = SDL_CreateWindow( "ODMonitor", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP );
     if( window == NULL )
     {
         printf( "Window could not be created! SDL_Error: %s\n", SDL_GetError() );

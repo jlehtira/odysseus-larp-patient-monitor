@@ -1,0 +1,12 @@
+
+# Packages:
+*.tar.gz
+*.zip
+
+# The lightstone library:
+liblightstone-*
+liblightstone.so*
+
+# vim swap files:
+*.swp
+
