@@ -3,13 +3,13 @@ To install on Ubuntu, follow these instructions. For other kinds of systems, the
 should be adapted accordingly.
 
 
-+++  Install prerequisites (Ubuntu):
+##  Install prerequisites (Ubuntu):
 
 sudo apt-get install \
     g++ cmake libusb-1.0-0.dev libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev
 
 
-+++  Download and compile liblightstone, newest version 1.5
+##  Download and compile liblightstone, newest version 1.5
 
 wget https://github.com/openyou/liblightstone/archive/refs/tags/1.5.tar.gz
 tar xvfz 1.5.tar.gz
@@ -29,7 +29,7 @@ You might need to bump the CMAKE_MINIMUM_REQUIRED version up
 in CMakeLists.txt.
 
 
-+++  Make odysseus-patient-monitor
+##  Make odysseus-patient-monitor
 
 The default is to compile statically:
 
@@ -40,7 +40,7 @@ You can also compile dynamically:
 LINKING="dynamic" ./make.sh
 
 
-+++  Linux: tell udev about the device (instructions for Ubuntu):
+##  Linux: tell udev about the device (instructions for Ubuntu):
 
 Add the device to udev and reload
 

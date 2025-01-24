@@ -1,4 +1,4 @@
-= Odysseus LARP patient monitos
+# Odysseus LARP patient monitor
 
 Odysseus larp patient monitor is the software for a patient monitor that was
 used as a prop in a sci-fi medbay on board of a spaceship. Odysseus was a
@@ -18,13 +18,15 @@ and should be used only on one's own responsibility. It is neither optimized nor
 modern, and this is by design.
 
 
-= Required packages (Ubuntu) =
+## Required packages (Ubuntu)
 
 The Odysseus larp patient monitor uses the SDL 2 library for graphics, sounds
 and threading as this was a convenient, easy choice that takes care of most
 needs. In addition, it utilizes libusb-1.0.0 through liblightstone. Libusb-1.0.0
 is available in Ubuntu repositories, liblightstone has to be downloaded and compiled
 separately.
+
+![Screenshot of the Odysseus larp patient monitor with two patients](screenshot-2p.png)
 
 The software can also be compiled on Windows, but right now there are no detailed
 instructions for it.
@@ -40,7 +42,7 @@ The full list of Ubuntu packages that need to be installed is:
     libsdl2-gfx-dev
 
 
-= User interface =
+## User interface
 
 By design, the patient monitor has no visible UI, and for the Odysseus LARP,
 only displays and the lightstone sensors were visible to the players - computers
@@ -58,7 +60,7 @@ keys:
 0, -    Decrease line width
 +       Increase line width
 
-= License =
+## License
 
 Copyright (C) 2025 by Jonni Lehtiranta <jonni.lehtiranta@gmail.com>
 
