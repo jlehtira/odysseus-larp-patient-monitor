@@ -358,7 +358,7 @@ bool open_audio() {
 
     SDL_Init(SDL_INIT_AUDIO);
 
-    SDL_LoadWAV("Bleep-SoundBible.com-1927126940.wav", &beepsound.spec, &beepsound.buffer, &beepsound.length);
+    SDL_LoadWAV("sounds/Bleep-SoundBible.com-1927126940.wav", &beepsound.spec, &beepsound.buffer, &beepsound.length);
 
     AUDIOdev = SDL_OpenAudioDevice(NULL, 0, &beepsound.spec, &have, SDL_AUDIO_ALLOW_FORMAT_CHANGE);
     if (AUDIOdev == 0) {
@@ -366,7 +366,7 @@ bool open_audio() {
         return false;
     }
 
-//    SDL_LoadWAV("Real Heart Beat-SoundBible.com-717420031.wav", &heartsound.spec, &heartsound.buffer, &heartsound.length);
+//    SDL_LoadWAV("sounds/Real Heart Beat-SoundBible.com-717420031.wav", &heartsound.spec, &heartsound.buffer, &heartsound.length);
 
     return true;
 }
@@ -448,6 +448,7 @@ int main( int argc, char* args[] )
     // Open the font
     TTF_Font *gFont = TTF_OpenFont( "bin/Debug/neuropol_x_rg.ttf", FONT_SIZE );
 //    TTF_Font *gFont = TTF_OpenFont( "bin/Debug/DELIRIUM_NCV.ttf", FONT_SIZE );
+    if (gFont == NULL) gFont = TTF_OpenFont( "fonts/neuropol_x_rg.ttf", FONT_SIZE );
     if (gFont == NULL) gFont = TTF_OpenFont( "neuropol_x_rg.ttf", FONT_SIZE );
     if( gFont == NULL ) {
         printf( "Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError() );

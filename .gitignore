@@ -10,3 +10,6 @@ liblightstone.so*
 # vim swap files:
 *.swp
 
+# compiled objects and binaries
+*.o
+*.x

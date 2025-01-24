@@ -1,22 +1,26 @@
 #!/bin/bash
 
+if [ "$LINKING" != "dynamic" ]
+then
+    LINKING="static"
+fi
+
 LIGHTSTONE_INC=./liblightstone-1.5/include
 LIGHTSTONE_LIB=./liblightstone-1.5/build/lib
+EXE=odysseusmonitor.x
 
 CFLAGS="-I $LIGHTSTONE_INC -g"
-LDFLAGS="-L $LIGHTSTONE_LIB -llightstone -lSDL2_ttf -lSDL2_gfx"
+if [ "$LINKING" == "static" ]
+then
+    # Static linking
+    LDFLAGS="$(sdl2-config --static-libs) $LIGHTSTONE_LIB/liblightstone.a -L $LIGHTSTONE_LIB -lSDL2_ttf -lSDL2_gfx -lusb-1.0"
+else
+    # Dynamic linking
+    LDFLAGS="$(sdl2-config --libs) -L $LIGHTSTONE_LIB -llightstone -lSDL2_ttf -lSDL2_gfx"
+    cp $LIGHTSTONE_LIB/liblightstone.so.1.5.0 .
+fi
 
-g++ $(sdl2-config --cflags) -c main.cpp $CFLAGS -o main.o
-g++ -Wl,-R -Wl,. main.o $(sdl2-config --libs) $LDFLAGS -o main.x
+g++ $(sdl2-config --cflags) -c src/main.cpp $CFLAGS -o src/main.o
+g++ -Wl,-R -Wl,. src/main.o $LDFLAGS -o $EXE
 
-cp $LIGHTSTONE_LIB/liblightstone.so.1.5.0 .
 
-#g++ -I ./include -c lightstone.c -o lightstone.o
-#g++ -I ./include -c lightstone_libusb1.c -o lightstone_libusb1.o
-
-#g++ main.o lightstone.o lightstone_libusb1.o $(sdl2-config --libs) -lSDL2_ttf -o main.x
-
-exit
-# This was for the lightstone
-g++ -I ../../include -c lightstone_test.c -o lightstone_test.o
-g++ -Wl,-R -Wl,. -L ../../build2/lib lightstone_test.o -llightstone -o test.x
