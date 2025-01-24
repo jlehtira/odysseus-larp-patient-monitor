@@ -51,14 +51,14 @@ and keyboards were hidden from view.
 However, when starting the system, the view can be configured by pressing these
 keys:
 
-1       Swap top left and top right views
-2       Swap top right and bottom left views
-3       Swap bottom left and bottom right views
-4       Decrease DATA_WIDTH (more data on screen, slower curve)
-5       Increase DATA WIDTH (less data on screen, faster curve)
-6, a, b Toggle audio
-0, -    Decrease line width
-+       Increase line width
+    1       Swap top left and top right views
+    2       Swap top right and bottom left views
+    3       Swap bottom left and bottom right views
+    4       Decrease DATA_WIDTH (more data on screen, slower curve)
+    5       Increase DATA WIDTH (less data on screen, faster curve)
+    6, a, b Toggle audio
+    0, -    Decrease line width
+    +       Increase line width
 
 ## License
 
